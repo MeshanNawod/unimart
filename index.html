@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://www.gstatic.com; frame-src https://*.firebaseapp.com https://apis.google.com https://accounts.google.com; form-action 'self' https://www.payhere.lk https://sandbox.payhere.lk; base-uri 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#e8452c">
 <title>UniMart · Campus marketplace</title>
@@ -18,7 +20,10 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="manifest.webmanifest">
-<script>try{var t=localStorage.getItem("unimart-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script src="js/boot.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;600;700;800&family=Noto+Sans+Tamil:wght@400;600;700;800&display=swap">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -39,6 +44,7 @@
       <a href="#/cart" data-nav="cart">Cart <span class="badge" id="cart-count">0</span></a>
       <a href="#/account" data-nav="account" id="account-link">Sign in</a>
     </nav>
+    <select class="lang-pick notr" id="lang-pick" aria-label="Language"><option value="en">English</option><option value="si">සිංහල</option><option value="ta">தமிழ்</option></select>
   </div>
 </header>
 
@@ -64,6 +70,7 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="js/config.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/data.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/db-local.js"></script>

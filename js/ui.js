@@ -28,17 +28,28 @@ window.UM = window.UM || {};
   U.act = async (btn, fn, okMsg) => {
     if (btn) btn.disabled = true;
     try { const r = await fn(); if (okMsg) U.toast(okMsg); return r; }
-    catch (e) { console.error(e); U.toast(e.message || "Something went wrong", true); throw e; }
+    catch (e) { U.toast(e.message || "Something went wrong", true); if (e && typeof e === "object") e.shown = true; throw e; }
     finally { if (btn) btn.disabled = false; }
   };
+  /* only show photos that are real image data (or Google profile photos): blocks javascript:/tracking URLs */
+  U.safeImg = (src) => (typeof src === "string" && (/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(src) || /^https:\/\/lh3\.googleusercontent\.com\//.test(src)) ? src : "");
   U.thumb = (l, cls = "") => {
-    if (l.img) return `<div class="thumb ${cls}"><img src="${U.esc(l.img)}" alt="" loading="lazy"></div>`;
+    if (U.safeImg(l.img)) return `<div class="thumb ${cls}"><img src="${U.esc(l.img)}" alt="" loading="lazy"></div>`;
     const c = U.cat(l.cat);
     return `<div class="thumb ${cls}" style="--h:${c.hue}">${U.icon(c.icon, cls === "sm" ? 26 : 56)}${cls === "sm" ? "" : `<span>${U.esc(c.name)}</span>`}</div>`;
   };
   U.statusLabel = {
-    placed: "Waiting for seller", confirmed: "Confirmed", ready: "Ready to meet", completed: "Completed", cancelled: "Cancelled",
+    awaiting_payment: "Waiting for payment", placed: "Waiting for seller", confirmed: "Confirmed", ready: "Ready to meet", completed: "Completed", cancelled: "Cancelled",
     active: "Live", pending: "Waiting for approval", paused: "Paused", sold: "Sold", hidden: "Hidden by admin"
   };
+  U.isNotice = (l) => U.cat(l.cat).kind === "notice";
+  U.when = (t) => {
+    if (!t) return "";
+    const loc = { si: "si-LK", ta: "ta-LK" }[(UM.i18n && UM.i18n.lang) || "en"] || "en-GB";
+    try { return new Date(t).toLocaleString(loc, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); }
+    catch (e) { return new Date(t).toLocaleString(); }
+  };
+  // errors already shown to the user as a toast are not "uncaught"
+  window.addEventListener("unhandledrejection", (e) => { if (e.reason && e.reason.shown) e.preventDefault(); });
   U.debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 })();

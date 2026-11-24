@@ -1,8 +1,11 @@
 /* UniMart – shop pages (hash router, no build step) */
 (function () {
   const S = UM.store;
-  const { $, $$, esc, money, cat, isService, icon, stars, ago, toast, act, thumb, statusLabel } = UM.ui;
+  const { $, $$, esc, money, cat, isService, isNotice, when, icon, stars, ago, toast, act, thumb, statusLabel, safeImg } = UM.ui;
+  const priceText = (l) => (isNotice(l) && !l.price ? "Free" : money(l.price));
+  const VERIFIED = `<svg class="tick" viewBox="0 0 24 24" width="14" height="14" aria-label="Verified society"><path fill="currentColor" d="M12 2l2.4 2.1 3.2-.4.9 3.1 2.8 1.6-1.2 3 1.2 3-2.8 1.6-.9 3.1-3.2-.4L12 22l-2.4-2.1-3.2.4-.9-3.1-2.8-1.6 1.2-3-1.2-3 2.8-1.6.9-3.1 3.2.4z"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="#fff" stroke-width="2" fill="none"/></svg>`;
   const view = $("#view");
+  UM.i18n.start();
 
   function card(l) {
     const off = l.was ? Math.round((1 - l.price / l.was) * 100) : 0;
@@ -10,13 +13,16 @@
     return `<a class="pcard" href="#/item/${l.id}">
       ${thumb(l)}
       ${off > 0 ? `<span class="off">-${off}%</span>` : ""}
-      ${isService(l) ? `<span class="kind">Service</span>` : ""}
+      ${isNotice(l) ? `<span class="kind notice">Notice</span>` : cat(l.cat).event ? `<span class="kind event">${l.cat === "stalls" ? "Stall" : "Ticket"}</span>` : isService(l) ? `<span class="kind">Service</span>` : ""}
+      ${l.society ? `<span class="soc">Society</span>` : ""}
+      ${l.stock && S.left(l) === 0 ? `<span class="soldout">Sold out</span>` : ""}
       ${l.status && l.status !== "active" ? `<span class="kind st">${statusLabel[l.status]}</span>` : ""}
       <div class="pbody">
         <h3>${esc(l.title)}</h3>
-        <div class="price">${money(l.price)}${l.unit ? `<small> ${esc(l.unit)}</small>` : ""}${l.was ? ` <s>${money(l.was)}</s>` : ""}</div>
-        <div class="meta">${stars(sel.rating || 5)} <span>${l.sold || 0} ${isService(l) ? "booked" : "sold"}</span></div>
-        <div class="uni">${esc(sel.uni || "")}</div>
+        <div class="price">${priceText(l)}${l.unit ? `<small> ${esc(l.unit)}</small>` : ""}${l.was ? ` <s>${money(l.was)}</s>` : ""}</div>
+        ${l.eventAt ? `<div class="when">${icon("M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", 14)}<span class="notr">${esc(when(l.eventAt))}</span></div>` : l.schedule ? `<div class="when">${icon("M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", 14)}<span class="notr">${esc(l.schedule)}</span></div>` : ""}
+        ${isNotice(l) ? "" : `<div class="meta">${stars(sel.rating || 5)} <span>${l.sold || 0} ${isService(l) ? "booked" : "sold"}</span></div>`}
+        <div class="uni">${l.society ? `<span class="notr">${esc(l.society)}</span>${l.societyVerified ? VERIFIED : ""}` : esc(sel.uni || "")}</div>
       </div>
     </a>`;
   }
@@ -37,11 +43,14 @@
   /* ---------- home ---------- */
   pages.home = () => {
     const all = S.allListings().filter((l) => l.status === "active");
-    const deals = all.filter((l) => l.featured || l.was).sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0)).slice(0, 10);
+    const deals = all.filter((l) => (l.featured || l.was) && !l.eventAt).sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0)).slice(0, 10);
     const services = all.filter(isService).sort((a, b) => b.sold - a.sold).slice(0, 10);
     const items = all.filter((l) => !isService(l)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 12);
     const sellers = new Set(all.map((l) => l.sellerId)).size;
     const seen = recent().map((id) => all.find((l) => l.id === id)).filter(Boolean).slice(0, 10);
+    const events = all.filter((l) => l.eventAt && !isNotice(l)).sort((a, b) => a.eventAt - b.eventAt).slice(0, 10);
+    const societies = all.filter((l) => l.society).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 10);
+    const notices = all.filter(isNotice).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 6);
     return `
     <section class="hero">
       <div>
@@ -65,6 +74,18 @@
     ${deals.length ? `<section class="band deals">
       <div class="band-head"><h2>Flash deals</h2><span class="timer" id="timer"></span><a href="#/browse?sort=deal">See all</a></div>
       <div class="row">${deals.map(card).join("")}</div>
+    </section>` : ""}
+    ${events.length ? `<section class="band events">
+      <div class="band-head"><h2>Upcoming events</h2><a href="#/browse?type=event&sort=soon">See all</a></div>
+      <div class="row">${events.map(card).join("")}</div>
+    </section>` : ""}
+    ${societies.length ? `<section class="band">
+      <div class="band-head"><h2>From societies & clubs</h2><a href="#/browse?seller=society">See all</a></div>
+      <div class="row">${societies.map(card).join("")}</div>
+    </section>` : ""}
+    ${notices.length ? `<section class="band">
+      <div class="band-head"><h2>Notice board</h2><a href="#/browse?type=notice">See all</a></div>
+      <div class="notices">${notices.map((l) => `<a class="notice-card" href="#/item/${l.id}"><b>${esc(l.title)}</b><small>${l.society ? esc(l.society) : esc(l.sellerName)}${l.eventAt ? " · " + esc(when(l.eventAt)) : ""}</small><span>${esc(l.desc.slice(0, 110))}${l.desc.length > 110 ? "…" : ""}</span></a>`).join("")}</div>
     </section>` : ""}
     ${seen.length ? `<section class="band">
       <div class="band-head"><h2>Recently viewed</h2><button class="linkbtn" id="clear-recent">Clear</button></div>
@@ -99,11 +120,14 @@
   /* ---------- browse / search ---------- */
   const PAGE = 20;
   pages.browse = (q) => {
-    const f = { q: q.get("q") || "", cat: q.get("cat") || "", uni: q.get("uni") || "", type: q.get("type") || "", sort: q.get("sort") || "popular", max: q.get("max") || "" };
+    const f = { q: q.get("q") || "", cat: q.get("cat") || "", uni: q.get("uni") || "", type: q.get("type") || "", sort: q.get("sort") || "popular", max: q.get("max") || "", seller: q.get("seller") || "" };
     let list = S.allListings().filter((l) => l.status === "active");
     if (f.q) { const w = f.q.toLowerCase().split(/\s+/); list = list.filter((l) => { const t = (l.title + " " + l.desc + " " + cat(l.cat).name + " " + l.sellerUni).toLowerCase(); return w.every((x) => t.includes(x)); }); }
     if (f.cat) list = list.filter((l) => l.cat === f.cat);
-    if (f.type) list = list.filter((l) => (f.type === "service") === isService(l));
+    if (f.type === "event") list = list.filter((l) => cat(l.cat).event || cat(l.cat).schedule);
+    else if (f.type === "notice") list = list.filter(isNotice);
+    else if (f.type) list = list.filter((l) => !isNotice(l) && !cat(l.cat).event && (f.type === "service") === isService(l));
+    if (f.seller) list = list.filter((l) => (f.seller === "society") === !!l.society);
     if (f.uni) list = list.filter((l) => l.sellerUni === f.uni);
     if (f.max) list = list.filter((l) => l.price <= +f.max);
     const sorts = {
@@ -111,21 +135,23 @@
       low: (a, b) => a.price - b.price,
       high: (a, b) => b.price - a.price,
       new: (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
-      deal: (a, b) => (b.was ? 1 - b.price / b.was : 0) - (a.was ? 1 - a.price / a.was : 0)
+      deal: (a, b) => (b.was ? 1 - b.price / b.was : 0) - (a.was ? 1 - a.price / a.was : 0),
+      soon: (a, b) => (a.eventAt || 9e15) - (b.eventAt || 9e15)
     };
     list.sort(sorts[f.sort] || sorts.popular);
     const shown = Math.max(PAGE, +q.get("n") || PAGE);
-    const title = f.cat ? esc(cat(f.cat).name) : f.q ? `Results for “${esc(f.q)}”` : f.type === "service" ? "Services" : f.type === "item" ? "Items" : "Everything";
+    const title = f.cat ? esc(cat(f.cat).name) : f.q ? `Results for “${esc(f.q)}”` : f.type === "service" ? "Services" : f.type === "item" ? "Items" : f.type === "event" ? "Events & classes" : f.type === "notice" ? "Ads & Notices" : f.seller === "society" ? "Societies & clubs" : "Everything";
     return `
     <div class="crumbs"><a href="#/">Home</a> › ${title}</div>
     <h1 class="page-title">${title} <small>${list.length} found</small></h1>
     <form class="filters" id="filters">
       <input type="hidden" name="q" value="${esc(f.q)}">
-      <label>Type<select name="type"><option value="">All</option><option value="item" ${f.type === "item" ? "selected" : ""}>Items</option><option value="service" ${f.type === "service" ? "selected" : ""}>Services</option></select></label>
+      <label>Type<select name="type"><option value="">All</option><option value="item" ${f.type === "item" ? "selected" : ""}>Items</option><option value="service" ${f.type === "service" ? "selected" : ""}>Services</option><option value="event" ${f.type === "event" ? "selected" : ""}>Events & classes</option><option value="notice" ${f.type === "notice" ? "selected" : ""}>Ads & Notices</option></select></label>
+      <label>Seller<select name="seller"><option value="">Everyone</option><option value="society" ${f.seller === "society" ? "selected" : ""}>Societies & clubs</option><option value="student" ${f.seller === "student" ? "selected" : ""}>Students</option></select></label>
       <label>Category<select name="cat"><option value="">All categories</option>${UM.categories.map((c) => `<option value="${c.id}" ${f.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
       <label>University<select name="uni"><option value="">All universities</option>${UM.universities.map((u) => `<option ${f.uni === u ? "selected" : ""}>${esc(u)}</option>`).join("")}</select></label>
       <label>Max price<input name="max" type="number" min="0" step="100" placeholder="Any" value="${esc(f.max)}"></label>
-      <label>Sort<select name="sort">${[["popular", "Best selling"], ["low", "Price: low to high"], ["high", "Price: high to low"], ["deal", "Biggest discount"], ["new", "Newest"]].map(([v, t]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <label>Sort<select name="sort">${[["popular", "Best selling"], ["low", "Price: low to high"], ["high", "Price: high to low"], ["deal", "Biggest discount"], ["new", "Newest"], ["soon", "Event date"]].map(([v, t]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
     </form>
     ${grid(list.slice(0, shown), `No listings match. <a href="#/sell">Be the first to sell one</a>.`)}
     ${list.length > shown ? `<div class="center more"><button class="btn outline" id="more">Show more (${list.length - shown} left)</button></div>` : ""}`;
@@ -149,20 +175,28 @@
     const revs = S.reviews(l.id);
     const similar = S.allListings().filter((x) => x.status === "active" && x.cat === l.cat && x.id !== l.id).slice(0, 8);
     const mine = S.user && l.sellerId === S.user.id;
-    const buyable = l.status === "active" && !mine;
+    const left = S.left(l);
+    const notice = isNotice(l);
+    const buyable = l.status === "active" && !mine && !notice && left > 0 && !S.isPast(l);
     return `
     <div class="crumbs"><a href="#/">Home</a> › <a href="#/browse?cat=${l.cat}">${esc(cat(l.cat).name)}</a></div>
     ${l.status !== "active" ? `<div class="notice">${statusLabel[l.status] || l.status}${l.status === "pending" ? ": an admin will check it soon." : ""}</div>` : ""}
     <div class="detail">
       <div class="gallery">
         ${thumb(l, "big")}
-        ${l.imgs && l.imgs.length > 1 ? `<div class="gthumbs">${l.imgs.map((src, i) => `<button type="button" class="${i ? "" : "on"}" data-img="${i}" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join("")}</div>` : ""}
+        ${(l.imgs || []).filter(safeImg).length > 1 ? `<div class="gthumbs">${l.imgs.filter(safeImg).map((src, i) => `<button type="button" class="${i ? "" : "on"}" data-img="${i}" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join("")}</div>` : ""}
       </div>
       <div class="info">
         <h1>${esc(l.title)}</h1>
         <div class="meta">${stars(sel.rating || 5)} <span>${sel.rating || "New"}</span> · <span>${l.sold || 0} ${svc ? "booked" : "sold"}</span>${l.cond ? ` · <span class="pill">${esc(l.cond)}</span>` : ""}</div>
-        <div class="bigprice">${money(l.price)}${l.unit ? `<small> ${esc(l.unit)}</small>` : ""}
+        <div class="bigprice">${priceText(l)}${l.unit ? `<small> ${esc(l.unit)}</small>` : ""}
           ${l.was ? `<s>${money(l.was)}</s> <span class="off inline">-${Math.round((1 - l.price / l.was) * 100)}%</span>` : ""}</div>
+        ${l.eventAt || l.venue || l.schedule || l.stock ? `<ul class="eventbox">
+          ${l.eventAt ? `<li>${icon("M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", 18)}<span class="notr">${esc(when(l.eventAt))}</span>${S.isPast(l) ? ` <span class="pill red">Ended</span>` : ""}</li>` : ""}
+          ${l.schedule ? `<li>${icon("M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", 18)}<span class="notr">${esc(l.schedule)}</span></li>` : ""}
+          ${l.venue ? `<li>${icon("M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z", 18)}<span class="notr">${esc(l.venue)}</span></li>` : ""}
+          ${l.stock ? `<li>${icon("M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4zM14 7v10", 18)}${left > 0 ? `<b>${left}</b>&nbsp;<span>left</span>` : `<span class="pill red">Sold out</span>`}</li>` : ""}
+        </ul>` : ""}
         <ul class="perks">
           <li>${icon("M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z", 18)} Meet at <b>${esc(sel.uni || "campus")}</b></li>
           <li>${icon("M3 6h18v12H3zM3 10h18", 18)} Pay on delivery: cash or bank transfer</li>
@@ -175,14 +209,14 @@
             <button class="btn ghost danger" id="del">Delete</button>
           </div>` : buyable ? `
         <div class="actions">
-          ${svc ? "" : `<div class="qty"><button type="button" data-q="-1" aria-label="Less">−</button><input id="qty" type="number" min="1" value="1" aria-label="Quantity"><button type="button" data-q="1" aria-label="More">+</button></div>`}
-          <button class="btn primary" id="buy">${svc ? "Book now" : "Buy now"}</button>
+          ${svc && !l.stock ? "" : `<div class="qty"><button type="button" data-q="-1" aria-label="Less">−</button><input id="qty" type="number" min="1" ${l.stock ? `max="${left}"` : ""} value="1" aria-label="Quantity"><button type="button" data-q="1" aria-label="More">+</button></div>`}
+          <button class="btn primary" id="buy">${l.cat === "tickets" ? "Buy tickets" : svc ? "Book now" : "Buy now"}</button>
           <button class="btn outline" id="add">Add to cart</button>
           <button class="btn icon ${S.isFav(l.id) ? "on" : ""}" id="fav" aria-label="Save">♥</button>
-        </div>` : ""}
+        </div>` : notice && !mine ? `<div class="actions"><button class="btn icon ${S.isFav(l.id) ? "on" : ""}" id="fav" aria-label="Save">♥</button></div>` : ""}
         <div class="seller">
           <a class="avatar" href="#/seller/${esc(l.sellerId)}">${esc((sel.name || "?")[0])}</a>
-          <div><a href="#/seller/${esc(l.sellerId)}"><b>${esc(sel.name)}</b></a><small>${esc(sel.uni)} · ${sel.sales} sales${sel.joined ? " · since " + esc(sel.joined) : ""}</small></div>
+          <div><a href="#/seller/${esc(l.sellerId)}"><b>${esc(sel.name)}</b></a><small>${l.society ? `<span class="notr">${esc(l.society)}</span>${l.societyVerified ? VERIFIED : ""} · ` : ""}${esc(sel.uni)} · ${sel.sales} sales${sel.joined ? " · since " + esc(sel.joined) : ""}</small></div>
           ${mine ? "" : `<button class="btn ghost" id="chat">Message</button>`}
         </div>
         <div class="share">
@@ -202,7 +236,7 @@
       <h2>Reviews ${revs.length ? `<small>(${revs.length})</small>` : ""}</h2>
       ${revs.map((r) => `<div class="review">${stars(r.stars)} <b>${esc(r.byName)}</b> <small>${ago(r.createdAt)}</small>
         ${S.user && (r.byId === S.user.id) ? `<button class="linkbtn" data-delrev="${r.id}">delete</button>` : ""}<p>${esc(r.text)}</p></div>`).join("") || `<p class="muted">No reviews yet.</p>`}
-      ${mine ? "" : `<form id="review" class="review-form">
+      ${mine ? "" : S.myReview(l.id) ? `<p class="muted small">You reviewed this listing.</p>` : `<form id="review" class="review-form">
         <select name="stars" aria-label="Stars">${[5, 4, 3, 2, 1].map((n) => `<option value="${n}">${"★".repeat(n)}</option>`).join("")}</select>
         <input name="text" required maxlength="300" placeholder="Write a short review">
         <button class="btn outline">Post</button></form>`}
@@ -212,25 +246,25 @@
   pages.item.after = (q, id) => {
     const l = S.listing(id); if (!l) return;
     $$("[data-img]").forEach((b) => (b.onclick = () => {
-      $(".gallery .thumb img").src = l.imgs[+b.dataset.img];
+      $(".gallery .thumb img").src = l.imgs.filter(safeImg)[+b.dataset.img];
       $$("[data-img]").forEach((x) => x.classList.toggle("on", x === b));
     }));
     const link = location.href.split("#")[0] + "#/item/" + l.id;
-    const cl = $("#copy-link"); if (cl) cl.onclick = () => navigator.clipboard.writeText(link).then(() => toast("Link copied"), () => prompt("Copy this link:", link));
+    const cl = $("#copy-link"); if (cl) cl.onclick = () => navigator.clipboard.writeText(link).then(() => toast("Link copied"), () => prompt(UM.i18n.t("Copy this link:"), link));
     const ns = $("#native-share"); if (ns) ns.onclick = () => navigator.share({ title: l.title, text: l.title + " · " + money(l.price), url: link }).catch(() => {});
     rememberView(l.id);
     const qty = () => Math.max(1, parseInt(($("#qty") || {}).value, 10) || 1);
-    $$("[data-q]").forEach((b) => (b.onclick = () => { $("#qty").value = Math.max(1, qty() + +b.dataset.q); }));
+    $$("[data-q]").forEach((b) => (b.onclick = () => { $("#qty").value = Math.min(S.left(l), Math.max(1, qty() + +b.dataset.q)); }));
     const add = $("#add"); if (add) add.onclick = () => { S.addToCart(l.id, qty()); toast("Added to cart"); };
     const buy = $("#buy"); if (buy) buy.onclick = () => { S.addToCart(l.id, qty()); location.hash = "#/cart"; };
     const fav = $("#fav"); if (fav) fav.onclick = () => { if (!needUser()) return; act(fav, () => S.toggleFav(l.id)).then(() => toast(S.isFav(l.id) ? "Removed from saved" : "Saved")); };
     const chat = $("#chat"); if (chat) chat.onclick = () => { if (!needUser()) return; act(chat, () => S.openThread(l)).then((tid) => (location.hash = "#/messages/" + tid)); };
-    const del = $("#del"); if (del) del.onclick = () => { if (confirm("Delete this listing for good?")) act(del, () => S.deleteListing(l.id), "Listing deleted").then(() => (location.hash = "#/account")); };
+    const del = $("#del"); if (del) del.onclick = () => { if (confirm(UM.i18n.t("Delete this listing for good?"))) act(del, () => S.deleteListing(l.id), "Listing deleted").then(() => (location.hash = "#/account")); };
     $$("[data-st]").forEach((b) => (b.onclick = () => act(b, () => S.updateListing(l.id, { status: b.dataset.st }), "Updated")));
     $$("[data-delrev]").forEach((b) => (b.onclick = () => act(b, () => S.deleteReview(b.dataset.delrev), "Review deleted")));
     const rep = $("#report"); if (rep) rep.onclick = () => {
       if (!needUser()) return;
-      const reason = prompt("What is wrong with this listing? (scam, illegal, exam answers, wrong category…)");
+      const reason = prompt(UM.i18n.t("What is wrong with this listing? (scam, illegal, exam answers, wrong category…)"));
       if (reason && reason.trim()) act(rep, () => S.report(l, reason.trim().slice(0, 300)), "Thanks, an admin will check it");
     };
     const rf = $("#review"); if (rf) rf.onsubmit = (e) => {
@@ -276,14 +310,20 @@
     const e = q.get("edit") ? S.listing(q.get("edit")) : null;
     if (q.get("edit") && (!e || e.sellerId !== S.user.id)) return `<div class="empty">You can only edit your own listings.</div>`;
     const svc = e ? isService(e) : false;
+    const special = e ? !!(cat(e.cat).event || cat(e.cat).schedule || isNotice(e)) : q.get("kind") === "event";
     const v = (k) => esc(e && e[k] != null ? e[k] : "");
+    const pad = (n) => String(n).padStart(2, "0");
+    const dt = e && e.eventAt ? (() => { const d = new Date(e.eventAt); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : "";
     return `
     <h1 class="page-title">${e ? "Edit listing" : "Sell an item or offer a service"}</h1>
     <form class="panel form" id="sell">
       <div class="seg" role="radiogroup" ${e ? "hidden" : ""}>
-        <label><input type="radio" name="kind" value="item" ${svc ? "" : "checked"}><span>An item</span></label>
-        <label><input type="radio" name="kind" value="service" ${svc ? "checked" : ""}><span>A service</span></label>
+        <label><input type="radio" name="kind" value="item" ${svc || special ? "" : "checked"}><span>An item</span></label>
+        <label><input type="radio" name="kind" value="service" ${svc && !special ? "checked" : ""}><span>A service</span></label>
+        <label><input type="radio" name="kind" value="event" ${special ? "checked" : ""}><span>Event, class or ad</span></label>
       </div>
+      <label class="check"><input type="checkbox" name="isSociety" ${e && e.society ? "checked" : ""}> Posting for a university society or club</label>
+      <label id="soc-wrap" ${e && e.society ? "" : "hidden"}>Society or club name<input name="society" maxlength="80" value="${v("society")}" placeholder="e.g. Music Society, University of Colombo"></label>
       <label>Title<input name="title" required maxlength="90" value="${v("title")}" placeholder="e.g. Casio calculator, or poster design"></label>
       <div class="two">
         <label>Category<select name="cat" required></select></label>
@@ -291,8 +331,16 @@
       </div>
       <div class="two">
         <label id="cond-wrap">Condition<select name="cond">${["New", "Like new", "Good", "Fair"].map((c) => `<option ${(e ? e.cond === c : c === "Good") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
-        <label id="unit-wrap" hidden>Charged<select name="unit">${["per hour", "per job", "per session", "per page", "per order", "per copy", "from"].map((c) => `<option ${e && e.unit === c ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+        <label id="unit-wrap" hidden>Charged<select name="unit">${["per hour", "per job", "per session", "per course", "per stall", "per page", "per order", "per copy", "from"].map((c) => `<option ${e && e.unit === c ? "selected" : ""}>${c}</option>`).join("")}</select></label>
         <label>Old price (optional, shows a deal)<input name="was" type="number" min="0" step="10" value="${v("was")}"></label>
+      </div>
+      <div class="two" id="event-wrap" hidden>
+        <label>Date and time<input name="eventAt" type="datetime-local" value="${dt}"></label>
+        <label>Venue<input name="venue" maxlength="100" value="${v("venue")}" placeholder="e.g. Main hall, Faculty of Arts"></label>
+      </div>
+      <div class="two" id="extra-wrap" hidden>
+        <label id="stock-wrap">How many tickets / stalls<input name="stock" type="number" min="1" max="10000" step="1" value="${v("stock")}"></label>
+        <label id="sched-wrap">Class times<input name="schedule" maxlength="120" value="${v("schedule")}" placeholder="e.g. Every Saturday 9 to 11 am"></label>
       </div>
       <label>Description<textarea name="desc" rows="5" required maxlength="800" placeholder="What is it, what condition, where can buyers meet you?">${v("desc")}</textarea></label>
       <label>Photos (up to 4, the first one is the cover)<input name="photo" type="file" accept="image/*" multiple></label>
@@ -306,7 +354,7 @@
   pages.sell.after = (q) => {
     const f = $("#sell"); if (!f) return;
     const e = q.get("edit") ? S.listing(q.get("edit")) : null;
-    let photos = e ? (e.imgs && e.imgs.length ? e.imgs.slice() : e.img ? [e.img] : []) : [];
+    let photos = (e ? (e.imgs && e.imgs.length ? e.imgs.slice() : e.img ? [e.img] : []) : []).filter(safeImg);
     const drawShots = () => {
       $("#shots").innerHTML = photos.map((p, i) => `<div class="shot"><img src="${esc(p)}" alt="">${i === 0 ? `<span>Cover</span>` : `<button type="button" data-first="${i}" title="Make cover">★</button>`}<button type="button" class="x" data-rm="${i}" aria-label="Remove photo">×</button></div>`).join("");
       $$("[data-rm]", f).forEach((b) => (b.onclick = () => { photos.splice(+b.dataset.rm, 1); drawShots(); }));
@@ -315,9 +363,22 @@
     drawShots();
     const fillCats = () => {
       const kind = f.kind.value;
-      f.cat.innerHTML = UM.categories.filter((c) => c.kind === kind).map((c) => `<option value="${c.id}" ${e && e.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("");
-      $("#cond-wrap").hidden = kind === "service"; $("#unit-wrap").hidden = kind !== "service";
+      const inKind = (c) => kind === "event" ? !!(c.event || c.schedule || c.kind === "notice") : c.kind === kind && !c.event && !c.schedule;
+      f.cat.innerHTML = UM.categories.filter(inKind).map((c) => `<option value="${c.id}" ${e && e.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+      catChanged();
     };
+    const catChanged = () => {
+      const c = cat(f.cat.value), notice = c.kind === "notice";
+      $("#cond-wrap").hidden = c.kind !== "item" || !!c.event;
+      $("#unit-wrap").hidden = c.kind !== "service";
+      $("#event-wrap").hidden = !(c.event || notice);
+      $("#extra-wrap").hidden = !(c.stock || c.schedule);
+      $("#stock-wrap").hidden = !c.stock; $("#sched-wrap").hidden = !c.schedule;
+      f.price.required = !notice; f.price.placeholder = notice ? "0 = free" : "";
+      f.eventAt.required = !!c.event; f.venue.required = !!(c.event || c.schedule);
+    };
+    f.cat.onchange = catChanged;
+    f.isSociety.onchange = () => { $("#soc-wrap").hidden = !f.isSociety.checked; f.society.required = f.isSociety.checked; };
     $$("input[name=kind]", f).forEach((r) => (r.onchange = fillCats)); fillCats();
     // shrink each photo to a ~640px JPEG so 4 of them fit inside one Firestore document (1 MB)
     const shrink = (file) => new Promise((ok, bad) => {
@@ -339,11 +400,19 @@
     };
     f.onsubmit = (ev) => {
       ev.preventDefault();
-      const svc = f.kind.value === "service";
-      const was = +f.was.value, price = +f.price.value;
+      const c = cat(f.cat.value);
+      const svc = c.kind === "service";
+      const was = +f.was.value, price = +f.price.value || 0;
+      const at = f.eventAt.value ? new Date(f.eventAt.value).getTime() : null;
+      if (c.event && at && at < Date.now()) return toast("The event date is in the past.", true);
       const data = {
         title: f.title.value.trim(), cat: f.cat.value, price, was: was > price ? was : null,
-        desc: f.desc.value.trim(), unit: svc ? f.unit.value : null, cond: svc ? null : f.cond.value,
+        desc: f.desc.value.trim(), unit: svc ? f.unit.value : null, cond: c.kind === "item" && !c.event ? f.cond.value : null,
+        society: f.isSociety.checked ? f.society.value.trim() || null : null,
+        eventAt: (c.event || c.kind === "notice") && at ? at : null,
+        venue: (c.event || c.schedule || c.kind === "notice") ? f.venue.value.trim() || null : null,
+        stock: c.stock && +f.stock.value > 0 ? Math.floor(+f.stock.value) : null,
+        schedule: c.schedule ? f.schedule.value.trim() || null : null,
         img: photos[0] || null, imgs: photos.length ? photos.slice(0, 4) : null
       };
       const btn = f.querySelector("button.primary");
@@ -398,13 +467,19 @@
     const gone = S.cart.filter((c) => S.listing(c.id).status !== "active");
     if (own.length || gone.length) return `<div class="empty">Remove ${own.length ? "your own listings" : "items that are no longer available"} from the cart first. <a href="#/cart">Back to cart</a></div>`;
     const total = S.cart.reduce((s, c) => s + S.listing(c.id).price * c.qty, 0);
+    const oneSeller = new Set(S.cart.map((c) => S.listing(c.id).sellerId)).size === 1;
     return `
     <h1 class="page-title">Checkout</h1>
     <form class="panel form narrow" id="co">
       <label>Your name<input name="name" required value="${esc(S.user.name)}"></label>
       <label>Phone (shared only with the seller)<input name="phone" required inputmode="tel" pattern="[0-9 +]{9,15}" placeholder="07X XXX XXXX"></label>
       <label>Where to meet<select name="place"><option>Main gate</option><option>Library entrance</option><option>Main canteen</option><option>My hostel</option><option>Online (services)</option></select></label>
-      <label>Pay with<select name="pay"><option>Cash when we meet</option><option>Bank transfer when we meet</option></select></label>
+      <fieldset class="paybox">
+        <legend>Pay with</legend>
+        <label class="payopt"><input type="radio" name="method" value="cash" checked><span><b>Cash when we meet</b><small>Pay the seller in person. Count your change.</small></span></label>
+        <label class="payopt"><input type="radio" name="method" value="bank"><span><b>Bank transfer to the seller</b><small>The seller shares their bank details when they confirm. Transfer, then add the reference.</small></span></label>
+        ${S.onlinePayments ? `<label class="payopt ${oneSeller ? "" : "off"}"><input type="radio" name="method" value="online" ${oneSeller ? "" : "disabled"}><span><b>Pay online: card, eZ Cash, mCash, Genie</b><small>${oneSeller ? "Secure checkout by PayHere. UniMart holds the money and pays the seller after you receive the item." : "Online payment works for one seller at a time. Check out each seller separately."}</small></span></label>` : ""}
+      </fieldset>
       <label>Note to seller (optional)<textarea name="note" rows="2" maxlength="300"></textarea></label>
       <div class="sumrow total"><span>Total</span><span>${money(total)}</span></div>
       <button class="btn primary wide">Place order</button>
@@ -414,13 +489,39 @@
     const f = $("#co"); if (!f) return;
     f.onsubmit = (e) => {
       e.preventDefault();
-      act(f.querySelector("button"), () => S.placeOrder({ name: f.name.value.trim(), phone: f.phone.value.trim(), place: f.place.value, pay: f.pay.value, note: f.note.value.trim() }))
-        .then((ids) => { toast(ids.length > 1 ? ids.length + " orders placed" : "Order placed"); location.hash = "#/orders"; });
+      const method = f.method.value;
+      const pay = { cash: "Cash when we meet", bank: "Bank transfer to the seller", online: "Online payment (PayHere)" }[method];
+      act(f.querySelector("button.primary"), async () => {
+        const ids = await S.placeOrder({ name: f.name.value.trim(), phone: f.phone.value.trim(), place: f.place.value, pay, method, note: f.note.value.trim() });
+        if (method === "online") { location.hash = "#/orders"; await S.startPayment(ids[0]); return; }
+        toast(ids.length > 1 ? ids.length + " orders placed" : "Order placed"); location.hash = "#/orders";
+      });
     };
   };
 
   /* ---------- orders (buying) & sales (selling) ---------- */
   const steps = ["placed", "confirmed", "ready", "completed"];
+  const payLabel = { unpaid: "Not paid yet", paid: "Paid", pending: "Payment processing", failed: "Payment failed", review: "Payment under review", chargeback: "Payment reversed" };
+  function paymentBlock(o, asSeller) {
+    const pill = `<span class="pill ${o.paymentStatus === "paid" ? "green" : ["failed", "chargeback"].includes(o.paymentStatus) ? "red" : ""}">${payLabel[o.paymentStatus || "unpaid"]}</span>`;
+    let body = "";
+    if (o.method === "online") {
+      body = o.paymentStatus === "paid"
+        ? `<small>${asSeller ? (o.payout === "done" ? "Paid online. UniMart has sent you the money." : "Paid online. UniMart sends you the money after the order is completed.") : "Paid online with PayHere" + (o.payment && o.payment.method ? " (" + esc(o.payment.method) + ")" : "") + "."}</small>`
+        : `<small>${asSeller ? "Waiting for the buyer to pay online. Don't hand over anything yet." : "Your order is saved. Finish the online payment to send it to the seller."}</small>`;
+    } else if (o.method === "bank") {
+      if (!asSeller) {
+        body = o.sellerBank
+          ? `<div class="bankbox"><b>Pay to</b><span>${esc(o.sellerBank.accountName)}</span><span>${esc(o.sellerBank.bank)}${o.sellerBank.branch ? " · " + esc(o.sellerBank.branch) : ""}</span><span class="mono">${esc(o.sellerBank.accountNo)}</span><span>Amount: <b>${money(o.total)}</b> · Reference: <b class="mono">${esc(o.id.slice(-6).toUpperCase())}</b></span></div>
+             ${o.paymentStatus !== "paid" ? (o.paymentRef ? `<small>You said you paid (ref: ${esc(o.paymentRef)}). Waiting for the seller to confirm.</small>` : `<form class="inline-form" data-ref="${o.id}"><input name="ref" required maxlength="60" placeholder="Transfer reference or slip number"><button class="btn outline small">I've paid</button></form>`) : ""}`
+          : `<small>The seller will share bank details when they confirm your order.</small>`;
+      } else {
+        body = o.paymentRef ? `<small>Buyer says they paid. Reference: <b class="mono">${esc(o.paymentRef)}</b>. Check your bank before handing over.</small>` : `<small>${o.sellerBank ? "Your bank details were shared with the buyer." : "Your bank details will be shared when you confirm."}</small>`;
+      }
+    }
+    const canReceive = asSeller && o.method !== "online" && o.paymentStatus !== "paid" && ["placed", "confirmed", "ready"].includes(o.status);
+    return `<div class="paybar">${pill}${body}${canReceive ? `<button class="btn ghost small" data-o="${o.id}" data-paid="1" data-as="sale">Money received</button>` : ""}</div>`;
+  }
   function orderCard(o, asSeller) {
     const next = { placed: "confirmed", confirmed: "ready", ready: "completed" }[o.status];
     const nextLabel = { confirmed: "Confirm order", ready: "Ready to meet", completed: "Mark completed" }[next];
@@ -429,13 +530,15 @@
         <div class="order-head"><b>#${esc(o.id.slice(-6).toUpperCase())}</b>
           <small>${ago(o.createdAt)} · ${asSeller ? "buyer " + esc(o.buyerName) : "seller " + esc(o.sellerName)}</small>
           <span class="pill ${o.status === "completed" ? "green" : o.status === "cancelled" ? "red" : ""}">${statusLabel[o.status]}</span></div>
-        ${o.status !== "cancelled" ? `<ol class="steps">${steps.map((s, i) => `<li class="${i <= steps.indexOf(o.status) ? "on" : ""}">${statusLabel[s]}</li>`).join("")}</ol>` : ""}
+        ${!["cancelled", "awaiting_payment"].includes(o.status) ? `<ol class="steps">${steps.map((s, i) => `<li class="${i <= steps.indexOf(o.status) ? "on" : ""}">${statusLabel[s]}</li>`).join("")}</ol>` : ""}
         ${o.lines.map((x) => `<div class="sumrow"><a href="#/item/${x.id}">${esc(x.title)} × ${x.qty}</a><span>${money(x.price * x.qty)}</span></div>`).join("")}
         <div class="sumrow total"><span>Total</span><span>${money(o.total)}</span></div>
+        ${paymentBlock(o, asSeller)}
         <p class="muted small">Meet: ${esc(o.place)} · ${esc(o.pay)}${asSeller ? ` · Phone: <a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>` : ""}${o.note ? `<br>Note: ${esc(o.note)}` : ""}</p>
         <div class="actions">
+          ${!asSeller && o.status === "awaiting_payment" && o.paymentStatus !== "paid" ? `<button class="btn primary small" data-pay="${o.id}">Pay now</button>` : ""}
           ${asSeller && next ? `<button class="btn primary small" data-o="${o.id}" data-to="${next}" data-as="sale">${nextLabel}</button>` : ""}
-          ${(asSeller && next) || (!asSeller && ["placed", "confirmed"].includes(o.status)) ? `<button class="btn ghost small" data-o="${o.id}" data-to="cancelled" data-as="${asSeller ? "sale" : "buy"}">Cancel</button>` : ""}
+          ${(asSeller && next) || (!asSeller && ["placed", "confirmed", "awaiting_payment"].includes(o.status) && o.paymentStatus !== "paid") ? `<button class="btn ghost small" data-o="${o.id}" data-to="cancelled" data-as="${asSeller ? "sale" : "buy"}">Cancel</button>` : ""}
         </div>
       </div>`;
   }
@@ -450,11 +553,22 @@
     <div class="tabs"><a href="#/orders" class="${tab === "buying" ? "on" : ""}">I bought (${S.orders.length})</a><a href="#/orders?tab=sales" class="${tab === "sales" ? "on" : ""}">I sold (${S.sales.length})${open ? ` <span class="badge">${open}</span>` : ""}</a></div>
     ${list.map((o) => orderCard(o, tab === "sales")).join("") || `<div class="empty">${tab === "sales" ? "No sales yet. <a href=\"#/sell\">List something</a>" : "No orders yet. <a href=\"#/browse\">Start shopping</a>"}</div>`}`;
   };
-  pages.orders.after = () => $$("[data-o]").forEach((b) => (b.onclick = () => {
-    const o = (b.dataset.as === "sale" ? S.sales : S.orders).find((x) => x.id === b.dataset.o);
-    if (b.dataset.to === "cancelled" && !confirm("Cancel this order?")) return;
-    act(b, () => S.setOrderStatus(o, b.dataset.to), "Order updated");
-  }));
+  pages.orders.after = (q) => {
+    if (q.get("paid")) { toast("Thanks! Your payment is being confirmed."); history.replaceState(null, "", "#/orders"); }
+    $$("[data-o]").forEach((b) => (b.onclick = () => {
+      const o = (b.dataset.as === "sale" ? S.sales : S.orders).find((x) => x.id === b.dataset.o);
+      if (b.dataset.paid) return act(b, () => S.updateOrder(o, { paymentStatus: "paid" }), "Payment marked as received");
+      if (b.dataset.to === "cancelled" && !confirm(UM.i18n.t("Cancel this order?"))) return;
+      if (b.dataset.to === "confirmed" && o.method === "bank") return act(b, () => S.confirmWithBank(o), "Order confirmed. Your bank details were shared.");
+      act(b, () => S.setOrderStatus(o, b.dataset.to), "Order updated");
+    }));
+    $$("[data-pay]").forEach((b) => (b.onclick = () => act(b, () => S.startPayment(b.dataset.pay))));
+    $$("[data-ref]").forEach((f) => (f.onsubmit = (e) => {
+      e.preventDefault();
+      const o = S.orders.find((x) => x.id === f.dataset.ref);
+      act(f.querySelector("button"), () => S.updateOrder(o, { paymentRef: f.ref.value.trim(), buyerPaidAt: Date.now() }), "Thanks! The seller will confirm.");
+    }));
+  };
 
   /* ---------- account: sign in, profile, my stuff ---------- */
   pages.account = (q) => {
@@ -511,7 +625,7 @@
     const openSales = S.sales.filter((o) => ["placed", "confirmed", "ready"].includes(o.status)).length;
     return `
     <div class="profile panel">
-      <div class="avatar big">${u.photo ? `<img src="${esc(u.photo)}" alt="">` : esc((u.name || "?")[0])}</div>
+      <div class="avatar big">${safeImg(u.photo) ? `<img src="${esc(u.photo)}" alt="">` : esc((u.name || "?")[0])}</div>
       <div class="grow"><h1>${esc(u.name)}</h1><small>${esc(u.uni)}${u.email ? " · " + esc(u.email) : ""}</small>
         <div><a href="#/account?edit=profile">Edit profile</a>${S.isAdmin ? ` · <a href="admin.html">Admin panel</a>` : ""}</div></div>
       <button class="btn ghost" id="signout">Sign out</button>
@@ -522,6 +636,15 @@
       <a href="#/messages"><b>${S.threads.length}</b>Chats</a>
       <a href="#/account" id="to-favs"><b>${favs.length}</b>Saved</a>
     </div>
+    <details class="panel payout" id="payout-box">
+      <summary><b>Bank details for getting paid</b> <small class="muted">only you and admins can see this</small></summary>
+      <form class="form" id="payout">
+        <p class="muted small">Shared with a buyer only when you confirm their bank-transfer order. Also used by UniMart to send you money from online payments.</p>
+        <div class="two"><label>Bank<input name="bank" required maxlength="60" placeholder="e.g. Bank of Ceylon"></label><label>Branch<input name="branch" maxlength="60"></label></div>
+        <div class="two"><label>Account name<input name="accountName" required maxlength="80"></label><label>Account number<input name="accountNo" required maxlength="30" inputmode="numeric" pattern="[0-9 ]{6,30}"></label></div>
+        <button class="btn primary">Save bank details</button>
+      </form>
+    </details>
     <section class="band"><div class="band-head"><h2>My listings</h2><a href="#/sell">+ New</a></div>${grid(mine, `You have not listed anything. <a href="#/sell">Sell your first item</a>.`)}</section>
     <section class="band" id="favs"><div class="band-head"><h2>Saved</h2></div>${grid(favs, "Tap ♥ on a listing to save it here.")}</section>`;
   };
@@ -539,6 +662,11 @@
     const rs = $("#resend"); if (rs) rs.onclick = () => act(rs, () => S.resendVerify(), "Email sent");
     const p = $("#profile"); if (p) p.onsubmit = (e) => { e.preventDefault(); act(p.querySelector("button"), () => S.saveProfile({ name: p.name.value.trim(), uni: p.uni.value }), "Saved").then(go); };
     const so = $("#signout"); if (so) so.onclick = () => act(so, () => S.signOut()).then(() => (location.hash = "#/"));
+    const pf = $("#payout");
+    if (pf) {
+      S.getPayout().then((p) => { if (p) ["bank", "branch", "accountName", "accountNo"].forEach((k) => { if (!pf[k].value) pf[k].value = p[k] || ""; }); }).catch(() => {});
+      pf.onsubmit = (e) => { e.preventDefault(); act(pf.querySelector("button"), () => S.savePayout({ bank: pf.bank.value.trim(), branch: pf.branch.value.trim(), accountName: pf.accountName.value.trim(), accountNo: pf.accountNo.value.trim() }), "Bank details saved"); };
+    }
     const tf = $("#to-favs"); if (tf) tf.onclick = (e) => { e.preventDefault(); $("#favs").scrollIntoView({ behavior: "smooth" }); };
   };
 
@@ -653,13 +781,17 @@
   if (S.live) reset.hidden = true;
   else reset.addEventListener("click", (e) => {
     e.preventDefault();
-    if (confirm("Clear all demo listings, orders and chats in this browser?")) { S.resetDemo(); S.setQty && S.cart.forEach((c) => S.setQty(c.id, 0)); location.hash = "#/"; toast("Demo reset"); }
+    if (confirm(UM.i18n.t("Clear all demo listings, orders and chats in this browser?"))) { S.resetDemo(); S.setQty && S.cart.forEach((c) => S.setQty(c.id, 0)); location.hash = "#/"; toast("Demo reset"); }
   });
   /* installable app: offline support + "Install app" button where the browser allows it */
   if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
   let installEvt = null;
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; $("#install").hidden = false; });
   $("#install").onclick = async (e) => { e.preventDefault(); if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("#install").hidden = true; };
+
+  const lp = $("#lang-pick");
+  lp.value = UM.i18n.lang;
+  lp.onchange = () => UM.i18n.setLang(lp.value);
 
   const tp = $("#theme-pick");
   tp.value = document.documentElement.dataset.theme || "";

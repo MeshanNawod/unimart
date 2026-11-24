@@ -78,9 +78,28 @@ UM.localBackend = function (cfg, emit) {
       return done();
     },
     setFavs(f) { db.users[db.me].favs = f; return done(f.length); },
-    addReview(r) { db.reviews[uid("r")] = r; return done(); },
+    addReview(r) {
+      const id = r.listingId + "_" + r.byId;
+      if (db.reviews[id]) return fail("You already reviewed this listing.");
+      db.reviews[id] = r; return done();
+    },
     deleteReview(id) { delete db.reviews[id]; return done(); },
-    report(r) { db.reports[uid("p")] = r; return done(); },
+    report(r) {
+      const id = r.listingId + "_" + r.byId;
+      if (db.reports[id]) return fail("You already reported this listing. An admin will check it.");
+      db.reports[id] = r; return done();
+    },
+    updateOrder(id, p) { Object.assign(db.orders[id], p); return done(); },
+    savePayout(p) { db.users[db.me].payout = p; return done(); },
+    getPayout(id) { return Promise.resolve((db.users[id] && db.users[id].payout) || null); },
+    /* demo: pretend PayHere took the money */
+    startPayment(id) {
+      const o = db.orders[id];
+      if (!confirm(UM.i18n ? UM.i18n.t("Demo mode: no real money moves. Simulate a successful card payment?") : "Simulate payment?")) return done(false);
+      Object.assign(o, { paymentStatus: "paid", status: "placed", payout: "pending", paidAt: Date.now(),
+        payment: { provider: "demo", id: "DEMO" + Date.now(), method: "VISA", amount: o.total.toFixed(2), currency: "LKR", code: "2", at: Date.now() } });
+      return done(true);
+    },
 
     openThread(t) { const id = uid("t"); db.threads[id] = t; db.messages[id] = {}; return done(id); },
     watchMessages() { return () => {}; },

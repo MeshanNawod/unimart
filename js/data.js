@@ -33,7 +33,16 @@ UM.categories = [
   { id: "transport", name: "Rides & Delivery", kind: "service", hue: 0,
     icon: "M3 13l2-6h14l2 6v5h-2v2h-3v-2H8v2H5v-2H3zm3 0h12l-1-3H7z" },
   { id: "other", name: "Other services", kind: "service", hue: 230,
-    icon: "M12 2l2.9 6.9L22 9.3l-5.5 4.7 1.7 7L12 17.3 5.8 21l1.7-7L2 9.3l7.1-.4z" }
+    icon: "M12 2l2.9 6.9L22 9.3l-5.5 4.7 1.7 7L12 17.3 5.8 21l1.7-7L2 9.3l7.1-.4z" },
+  /* events and notices: "event" = has a date and venue, "stock" = limited tickets / stalls */
+  { id: "tickets", name: "Event tickets", kind: "item", event: true, stock: true, hue: 345,
+    icon: "M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4zM14 7v10" },
+  { id: "stalls", name: "Stalls & Fairs", kind: "service", event: true, stock: true, hue: 20,
+    icon: "M3 9l2-5h14l2 5M3 9h18M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M5 12v8h14v-8" },
+  { id: "classes", name: "Classes & Courses", kind: "service", schedule: true, hue: 200,
+    icon: "M3 4h18v12H3zM8 20h8M12 16v4M7 8h6M7 11h10" },
+  { id: "notices", name: "Ads & Notices", kind: "notice", hue: 52,
+    icon: "M4 10v4h3l6 4V6L7 10zm12-2a5 5 0 0 1 0 8" }
 ];
 
 UM.sellers = {
@@ -44,7 +53,10 @@ UM.sellers = {
   s5: { id: "s5", name: "Senthuran K.", uni: "University of Jaffna", rating: 4.9, sales: 210, joined: "2022" },
   s6: { id: "s6", name: "Dinithi W.", uni: "University of Sri Jayewardenepura", rating: 4.6, sales: 44, joined: "2024" },
   s7: { id: "s7", name: "Ravindu M.", uni: "SLIIT", rating: 4.8, sales: 76, joined: "2023" },
-  s8: { id: "s8", name: "Hasini D.", uni: "University of Ruhuna", rating: 4.4, sales: 19, joined: "2025" }
+  s8: { id: "s8", name: "Hasini D.", uni: "University of Ruhuna", rating: 4.4, sales: 19, joined: "2025" },
+  s9: { id: "s9", name: "Music Society", society: "Music Society, University of Colombo", uni: "University of Colombo", rating: 4.9, sales: 640, joined: "2022" },
+  s10: { id: "s10", name: "Rotaract Club", society: "Rotaract Club of University of Moratuwa", uni: "University of Moratuwa", rating: 4.8, sales: 310, joined: "2023" },
+  s11: { id: "s11", name: "Japanese Circle", society: "Japanese Language Circle, University of Kelaniya", uni: "University of Kelaniya", rating: 4.7, sales: 85, joined: "2024" }
 };
 
 /* price in LKR; was = old price for deals; unit for services */
@@ -72,5 +84,12 @@ UM.seedListings = [
   { id: "l21", title: "English proofreading for reports & essays", cat: "other", price: 500, unit: "per 1000 words", seller: "s3", sold: 66, service: true, desc: "Grammar and clarity checks. I do not write the content for you." },
   { id: "l22", title: "Arduino Uno starter kit", cat: "electronics", price: 5500, was: 7000, cond: "Like new", seller: "s1", sold: 18, desc: "Breadboard, sensors, LEDs, jumper wires. Used for one project." },
   { id: "l23", title: "Lab coat + safety goggles", cat: "fashion", price: 1600, cond: "Good", seller: "s6", sold: 25, desc: "Size M. Washed and ironed." },
-  { id: "l24", title: "Rice & curry lunch packets", cat: "food", price: 350, cond: "New", seller: "s4", sold: 980, desc: "Veg or chicken. Order by 10 am for 12:30 delivery near the library." }
+  { id: "l24", title: "Rice & curry lunch packets", cat: "food", price: 350, cond: "New", seller: "s4", sold: 980, desc: "Veg or chicken. Order by 10 am for 12:30 delivery near the library." },
+  { id: "l25", title: "\u201cSaraswathi Nadha\u201d annual musical show \u00b7 normal ticket", cat: "tickets", price: 1000, was: 1500, seller: "s9", sold: 412, stock: 600, eventIn: 9, eventHour: 18, venue: "Nawarangahala, Colombo", desc: "Our annual concert with the university choir, band and guest artists. Early-bird price until next Friday. Show the e-ticket (order number) at the gate." },
+  { id: "l26", title: "\u201cSaraswathi Nadha\u201d musical show \u00b7 VIP ticket", cat: "tickets", price: 3000, seller: "s9", sold: 96, stock: 120, eventIn: 9, eventHour: 18, venue: "Nawarangahala, Colombo", desc: "Front rows, a programme booklet and refreshments at the interval." },
+  { id: "l27", title: "Food stall at the Rotaract Charity Carnival", cat: "stalls", price: 7500, unit: "per stall", seller: "s10", sold: 18, stock: 30, eventIn: 16, eventHour: 9, venue: "Main grounds, University of Moratuwa", desc: "3m x 3m stall with a table and two chairs. Electricity available for Rs 1,000 more. All profits from stall fees go to the children's ward project." },
+  { id: "l28", title: "Rotaract Charity Carnival \u00b7 entry ticket", cat: "tickets", price: 200, seller: "s10", sold: 233, stock: 2000, eventIn: 16, eventHour: 9, venue: "Main grounds, University of Moratuwa", desc: "Day pass for games, food stalls and the evening DJ night." },
+  { id: "l29", title: "Japanese JLPT N5 class (12 weeks)", cat: "classes", price: 6000, unit: "per course", seller: "s11", sold: 41, schedule: "Every Saturday, 9:00 to 11:00 am, starting next month", venue: "Room A-204, Faculty of Humanities", desc: "Beginner class taught by senior students who passed N3. Includes notes and two mock exams." },
+  { id: "l30", title: "Volunteers wanted for the beach clean-up", cat: "notices", price: 0, seller: "s10", sold: 0, eventIn: 5, eventHour: 7, venue: "Mount Lavinia beach", desc: "Join us for a morning clean-up. Transport and breakfast provided. Message us to register." },
+  { id: "l31", title: "Ad: Printing shop near main gate, 10% off for students", cat: "notices", price: 0, seller: "s6", sold: 0, desc: "Show your student ID. Colour printing, binding, lamination. Open 7 am to 9 pm." }
 ];

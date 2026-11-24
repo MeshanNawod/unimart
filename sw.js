@@ -1,10 +1,10 @@
 /* UniMart – service worker: lets the site install as an app and open without internet.
    Network first (so updates show at once), falls back to the saved copy when offline.
    Firebase and other sites are never cached. Bump VERSION when you change this file. */
-const VERSION = "unimart-v2";
+const VERSION = "unimart-v4";
 const SHELL = [
   "./", "index.html", "admin.html", "manifest.webmanifest", "css/style.css",
-  "js/config.js", "js/data.js", "js/ui.js", "js/db-local.js", "js/db-firebase.js", "js/store.js", "js/app.js", "js/admin.js",
+  "js/config.js", "js/i18n.js", "js/data.js", "js/ui.js", "js/db-local.js", "js/db-firebase.js", "js/store.js", "js/app.js", "js/admin.js",
   "img/logo.svg", "img/icon-192.png"
 ];
 
@@ -20,7 +20,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "no-cache" }) // always ask the server if there is a newer file
       .then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); }
         return res;

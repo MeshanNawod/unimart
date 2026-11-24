@@ -3,7 +3,8 @@
    Backend = Firebase when js/config.js has keys, otherwise demo mode (this browser only). */
 (function () {
   const cfg = window.UM_CONFIG || {};
-  const live = !!(cfg.firebase && cfg.firebase.apiKey);
+  // ?demo=1 in the address runs the demo (this browser only) even when Firebase keys are set
+  const live = !!(cfg.firebase && cfg.firebase.apiKey) && !/[?&]demo=1\b/.test(location.search);
 
   const cache = {
     authReady: false, user: null, isAdmin: false,
@@ -26,7 +27,9 @@
       sellerId: "sample-" + s.id, sellerName: s.name, sellerUni: s.uni, sellerRating: s.rating, sellerSales: s.sales,
       sellerJoined: s.joined, status: "active", featured: !!l.was, createdAt: Date.now() - (i + 1) * 3600e3, sample: true
     });
-    delete out.seller;
+    if (s.society) { out.society = s.society; out.societyVerified = true; }
+    if (l.eventIn) { const d = new Date(); d.setDate(d.getDate() + l.eventIn); d.setHours(l.eventHour || 18, 0, 0, 0); out.eventAt = d.getTime(); }
+    delete out.seller; delete out.eventIn; delete out.eventHour;
     return out;
   });
 
@@ -51,8 +54,11 @@
     /* listings: public = active ones, plus every listing I own */
     allListings() {
       const me = cache.user && cache.user.id;
-      return cache.listings.filter((l) => l.status === "active" || (me && l.sellerId === me));
+      return cache.listings.filter((l) => (l.status === "active" && !S.isPast(l)) || (me && l.sellerId === me));
     },
+    /* an event that ended more than 6 hours ago drops out of the shop */
+    isPast(l) { return !!(l.eventAt && l.eventAt < Date.now() - 6 * 3600e3); },
+    left(l) { return l.stock ? Math.max(0, l.stock - (l.sold || 0)) : Infinity; },
     everyListing() { return cache.listings; },
     listing(id) { return cache.listings.find((l) => l.id === id); },
     myListings() { const me = cache.user && cache.user.id; return me ? cache.listings.filter((l) => l.sellerId === me) : []; },
@@ -79,7 +85,12 @@
 
     /* cart */
     get cart() { return cart.filter((c) => S.listing(c.id)); },
-    addToCart(id, qty = 1) { const line = cart.find((c) => c.id === id); if (line) line.qty += qty; else cart.push({ id, qty }); saveCart(); },
+    addToCart(id, qty = 1) {
+      const l = S.listing(id), max = l ? S.left(l) : Infinity;
+      const line = cart.find((c) => c.id === id);
+      if (line) line.qty = Math.min(max, line.qty + qty); else cart.push({ id, qty: Math.min(max, qty) });
+      saveCart();
+    },
     setQty(id, qty) { cart = cart.map((c) => (c.id === id ? { id, qty } : c)).filter((c) => c.qty > 0); saveCart(); },
     cartCount() { return S.cart.reduce((n, c) => n + c.qty, 0); },
 
@@ -91,8 +102,11 @@
         (groups[l.sellerId] = groups[l.sellerId] || { sellerId: l.sellerId, sellerName: l.sellerName, lines: [] })
           .lines.push({ id: l.id, title: l.title, price: l.price, qty: c.qty, unit: l.unit || "" });
       });
+      const online = details.method === "online";
+      if (online && Object.keys(groups).length > 1) throw new Error("Online payment works for one seller at a time. Please check out each seller separately.");
       const orders = Object.values(groups).map((g) => Object.assign({}, details, g, {
-        buyerId: u.id, buyerName: u.name, buyerUni: u.uni, status: "placed", createdAt: Date.now(),
+        buyerId: u.id, buyerName: u.name, buyerUni: u.uni, createdAt: Date.now(),
+        status: online ? "awaiting_payment" : "placed", paymentStatus: "unpaid",
         total: g.lines.reduce((s, x) => s + x.price * x.qty, 0)
       }));
       const ids = await backend.placeOrders(orders);
@@ -102,6 +116,19 @@
     get orders() { return cache.orders.slice().sort((a, b) => b.createdAt - a.createdAt); },
     get sales() { return cache.sales.slice().sort((a, b) => b.createdAt - a.createdAt); },
     setOrderStatus: (order, status) => backend.setOrderStatus(order, status),
+    updateOrder: (order, patch) => backend.updateOrder(order.id, Object.assign({ updatedAt: Date.now() }, patch)),
+    startPayment: (orderId) => backend.startPayment(orderId),
+    onlinePayments: !!(cfg.payments && cfg.payments.online) || !live,
+
+    /* seller's bank details (private) */
+    savePayout: (p) => backend.savePayout(Object.assign({}, p, { updatedAt: Date.now() })),
+    getPayout: (uid) => backend.getPayout(uid || (cache.user && cache.user.id)),
+    /* seller confirms a bank-transfer order: attach their bank details so the buyer can pay */
+    async confirmWithBank(order) {
+      const p = await backend.getPayout(cache.user.id);
+      if (!p) throw new Error("Add your bank details in My account first, so the buyer knows where to pay.");
+      return backend.updateOrder(order.id, { status: "confirmed", updatedAt: Date.now(), sellerBank: { bank: p.bank, branch: p.branch || "", accountName: p.accountName, accountNo: p.accountNo } });
+    },
 
     /* saved */
     get favs() { return (cache.user && cache.user.favs) || []; },
@@ -110,6 +137,7 @@
 
     /* reviews & reports */
     sellerReviews(sellerId) { return cache.reviews.filter((r) => r.sellerId === sellerId).sort((a, b) => b.createdAt - a.createdAt); },
+    myReview(listingId) { const me = cache.user && cache.user.id; return me ? cache.reviews.find((r) => r.listingId === listingId && r.byId === me) : null; },
     reviews(listingId) { return cache.reviews.filter((r) => r.listingId === listingId).sort((a, b) => b.createdAt - a.createdAt); },
     addReview(l, stars, text) {
       const u = cache.user;

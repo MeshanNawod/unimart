@@ -44,8 +44,8 @@
   const exporters = {
     listings: () => [["id", "title", "category", "type", "price", "old price", "status", "featured", "sold", "seller", "university", "created"]]
       .concat(S.everyListing().map((l) => [l.id, l.title, cat(l.cat).name, l.service ? "service" : "item", l.price, l.was || "", l.status, l.featured ? "yes" : "", l.sold || 0, l.sellerName, l.sellerUni, day(l.createdAt)])),
-    orders: () => [["id", "status", "total", "buyer", "buyer university", "seller", "items", "meet", "pay", "phone", "created"]]
-      .concat(S.admin.orders.map((o) => [o.id, o.status, o.total, o.buyerName, o.buyerUni || "", o.sellerName, o.lines.map((x) => x.title + " x" + x.qty).join("; "), o.place, o.pay, o.phone, day(o.createdAt)])),
+    orders: () => [["id", "status", "total", "buyer", "buyer university", "seller", "items", "meet", "method", "payment", "payment id", "payout", "phone", "created"]]
+      .concat(S.admin.orders.map((o) => [o.id, o.status, o.total, o.buyerName, o.buyerUni || "", o.sellerName, o.lines.map((x) => x.title + " x" + x.qty).join("; "), o.place, o.method || "", o.paymentStatus || "", (o.payment && o.payment.id) || "", o.payout || "", o.phone, day(o.createdAt)])),
     users: () => [["id", "name", "university", "suspended", "listings", "orders", "joined"]]
       .concat(S.admin.users.map((u) => [u.id, u.name, u.uni, u.banned ? "yes" : "", count(S.everyListing(), (l) => l.sellerId === u.id), count(S.admin.orders, (o) => o.buyerId === u.id), day(u.createdAt)]))
   };
@@ -72,6 +72,7 @@
         <div><b>${A.users.length}</b>Users</div>
         <div><b>${A.orders.length}</b>Orders</div>
         <div><b>${money(gmv)}</b>Completed sales</div>
+        <div class="${A.orders.some((o) => o.method === "online" && o.paymentStatus === "paid" && o.payout !== "done") ? "hot" : ""}"><b>${money(A.orders.filter((o) => o.method === "online" && o.paymentStatus === "paid" && o.payout !== "done").reduce((s, o) => s + o.total, 0))}</b>Held for sellers</div>
         <div class="${count(A.reports, (r) => r.status === "open") ? "hot" : ""}"><b>${count(A.reports, (r) => r.status === "open")}</b>Open reports</div>
       </div>
       <div class="two-col">
@@ -101,11 +102,14 @@
             <a href="index.html#/item/${l.id}" target="_blank" rel="noopener">${thumb(l, "sm")}</a>
             <div class="grow"><b>${esc(l.title)}</b>
               <small>${money(l.price)} · ${esc(cat(l.cat).name)} · ${esc(l.sellerName)} (${esc(l.sellerUni)}) · ${ago(l.createdAt)}${l.sample ? " · sample" : ""}</small>
+              ${l.society ? `<small>Society: <b>${esc(l.society)}</b> ${l.societyVerified ? "✔ verified" : "(not verified)"}</small>` : ""}
+              ${l.eventAt ? `<small>Event: ${esc(new Date(l.eventAt).toLocaleString())}${l.venue ? " · " + esc(l.venue) : ""}${l.stock ? " · " + (l.sold || 0) + "/" + l.stock + " sold" : ""}</small>` : ""}
               <small class="clip">${esc(l.desc)}</small></div>
             <span class="pill ${l.status === "active" ? "green" : l.status === "hidden" ? "red" : ""}">${statusLabel[l.status] || l.status}</span>
             <div class="acts">
               ${l.status !== "active" ? `<button class="btn primary small" data-l="${l.id}" data-set="active">${l.status === "pending" ? "Approve" : "Make live"}</button>` : ""}
               ${l.status !== "hidden" ? `<button class="btn ghost small" data-l="${l.id}" data-set="hidden">${l.status === "pending" ? "Reject" : "Hide"}</button>` : ""}
+              ${l.society ? `<button class="btn ghost small ${l.societyVerified ? "on" : ""}" data-l="${l.id}" data-ver="${l.societyVerified ? "0" : "1"}">${l.societyVerified ? "✔ Verified" : "Verify society"}</button>` : ""}
               <button class="btn ghost small ${l.featured ? "on" : ""}" data-l="${l.id}" data-feat="${l.featured ? "0" : "1"}">${l.featured ? "★ Featured" : "☆ Feature"}</button>
               <button class="btn ghost small danger" data-l="${l.id}" data-del="1">Delete</button>
             </div>
@@ -115,18 +119,23 @@
 
   function orders() {
     let O = S.admin.orders.slice().sort((a, b) => b.createdAt - a.createdAt);
-    if (ofilter === "open") O = O.filter((o) => ["placed", "confirmed", "ready"].includes(o.status));
+    const owed = (o) => o.method === "online" && o.paymentStatus === "paid" && o.payout !== "done";
+    if (ofilter === "open") O = O.filter((o) => ["awaiting_payment", "placed", "confirmed", "ready"].includes(o.status));
+    else if (ofilter === "payout") O = O.filter((o) => owed(o) && o.status === "completed");
     else if (ofilter !== "all") O = O.filter((o) => o.status === ofilter);
     return `
-      <div class="toolbar"><div class="chips">${[["open", "Open"], ["completed", "Completed"], ["cancelled", "Cancelled"], ["all", "All"]].map(([v, t]) => `<button class="chip ${ofilter === v ? "on" : ""}" data-of="${v}">${t}</button>`).join("")}</div>${exportBtn("orders")}</div>
+      <div class="toolbar"><div class="chips">${[["open", "Open"], ["payout", "To pay sellers " + count(S.admin.orders, (o) => owed(o) && o.status === "completed")], ["completed", "Completed"], ["cancelled", "Cancelled"], ["all", "All"]].map(([v, t]) => `<button class="chip ${ofilter === v ? "on" : ""}" data-of="${v}">${t}</button>`).join("")}</div>${exportBtn("orders")}</div>
       <div class="panel table">
         ${O.map((o) => `
           <div class="trow">
             <div class="grow"><b>#${esc(o.id.slice(-6).toUpperCase())} · ${money(o.total)}</b>
               <small>${esc(o.buyerName)} (${esc(o.buyerUni || "")}) bought from ${esc(o.sellerName)} · ${ago(o.createdAt)}</small>
               <small>${o.lines.map((x) => esc(x.title) + " × " + x.qty).join(", ")}</small>
-              <small>Meet ${esc(o.place)} · ${esc(o.pay)} · ${esc(o.phone)}</small></div>
-            <select data-os="${o.id}" aria-label="Status">${["placed", "confirmed", "ready", "completed", "cancelled"].map((s) => `<option value="${s}" ${o.status === s ? "selected" : ""}>${statusLabel[s]}</option>`).join("")}</select>
+              <small>Meet ${esc(o.place)} · ${esc(o.pay)} · ${esc(o.phone)}</small>
+              <small>Payment: <b>${esc(o.paymentStatus || "unpaid")}</b>${o.payment ? ` · ${esc(o.payment.provider)} ${esc(o.payment.id)} ${esc(o.payment.method || "")}` : ""}${o.paymentRef ? ` · buyer ref ${esc(o.paymentRef)}` : ""}${o.method === "online" && o.paymentStatus === "paid" ? ` · payout: <b>${o.payout === "done" ? "sent" : "not sent"}</b>` : ""}</small>
+              <div class="bank-slot" id="bank-${o.id}"></div></div>
+            ${owed(o) ? `<div class="acts"><button class="btn ghost small" data-bank="${o.id}" data-seller="${esc(o.sellerId)}">Seller bank details</button><button class="btn primary small" data-payout="${o.id}">Mark money sent</button></div>` : ""}
+            <select data-os="${o.id}" aria-label="Status">${["awaiting_payment", "placed", "confirmed", "ready", "completed", "cancelled"].map((s) => `<option value="${s}" ${o.status === s ? "selected" : ""}>${statusLabel[s]}</option>`).join("")}</select>
           </div>`).join("") || `<div class="empty">No orders.</div>`}
       </div>`;
   }
@@ -211,12 +220,20 @@
   }
 
   function bind() {
+    $$("[data-bank]").forEach((b) => (b.onclick = () => act(b, () => S.getPayout(b.dataset.seller)).then((p) => {
+      $("#bank-" + b.dataset.bank).innerHTML = p ? `<div class="bankbox"><span>${esc(p.accountName)}</span><span>${esc(p.bank)}${p.branch ? " · " + esc(p.branch) : ""}</span><span class="mono">${esc(p.accountNo)}</span></div>` : `<small class="warn">This seller has not added bank details yet. Message them.</small>`;
+    })));
+    $$("[data-payout]").forEach((b) => (b.onclick = () => {
+      const o = S.admin.orders.find((x) => x.id === b.dataset.payout);
+      if (confirm("Did you send " + money(o.total) + " to " + o.sellerName + "? This only records it.")) act(b, () => S.updateOrder(o, { payout: "done", payoutAt: Date.now() }), "Recorded as paid out");
+    }));
     $$("[data-csv]").forEach((b) => (b.onclick = () => download(b.dataset.csv)));
     $$("[data-tab]").forEach((b) => (b.onclick = () => { tab = b.dataset.tab; search = ""; render(); }));
     $$("[data-lf]").forEach((b) => (b.onclick = () => { lfilter = b.dataset.lf; render(); }));
     $$("[data-of]").forEach((b) => (b.onclick = () => { ofilter = b.dataset.of; render(); }));
     const q = $("#q"); if (q) q.oninput = UM.ui.debounce(() => { search = q.value.trim().toLowerCase(); render(); }, 200);
     $$("[data-set]").forEach((b) => (b.onclick = () => act(b, () => S.updateListing(b.dataset.l, { status: b.dataset.set }), "Listing updated")));
+    $$("[data-ver]").forEach((b) => (b.onclick = () => act(b, () => S.updateListing(b.dataset.l, { societyVerified: b.dataset.ver === "1" }), "Updated")));
     $$("[data-feat]").forEach((b) => (b.onclick = () => act(b, () => S.updateListing(b.dataset.l, { featured: b.dataset.feat === "1" }), "Updated")));
     $$("[data-del]").forEach((b) => (b.onclick = () => { if (confirm("Delete this listing for good?")) act(b, () => S.deleteListing(b.dataset.l), "Deleted"); }));
     $$("[data-os]").forEach((s) => (s.onchange = () => { const o = S.admin.orders.find((x) => x.id === s.dataset.os); act(s, () => S.setOrderStatus(o, s.value), "Order updated"); }));

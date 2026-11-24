@@ -1,7 +1,10 @@
 rules_version = '2';
 // UniMart – Firestore security rules.
-// Paste this whole file into Firebase console → Firestore Database → Rules → Publish.
+// Deploy with `firebase deploy --only firestore:rules`, or paste this whole file into
+// Firebase console → Firestore Database → Rules → Publish.
 // Admins are NOT listed here: add a document /admins/{yourUid} in the console (see SETUP.md).
+// Payment results (paymentStatus, payment) are written only by the Cloud Function (functions/),
+// which bypasses these rules, or by an admin. No browser can mark an online order as paid.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -21,6 +24,11 @@ service cloud.firestore {
     }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
     function str(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+    function optStr(d, k, max) { return !(k in d) || d[k] == null || (d[k] is string && d[k].size() <= max); }
+    // "createdAt" must be the real time (±15 min for phones with a slightly wrong clock),
+    // so nobody can back-date or future-date posts
+    function now(t) { return t is int && t > request.time.toMillis() - 900000 && t < request.time.toMillis() + 900000; }
+    function myName() { return profile().name; }
 
     // ---------- admins: create these by hand in the console ----------
     match /admins/{uid} {
@@ -31,42 +39,72 @@ service cloud.firestore {
     // ---------- site settings ----------
     match /settings/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['requireApproval', 'announcement'])
+        && optStr(request.resource.data, 'announcement', 200);
     }
 
-    // ---------- public profiles ----------
+    // ---------- profiles (private: names shown in the shop are copied onto listings) ----------
     match /users/{uid} {
-      allow read: if true;
+      allow read: if (signedIn() && me() == uid) || isAdmin();
       allow create: if signedIn() && me() == uid
         && request.resource.data.keys().hasOnly(['name', 'uni', 'favs', 'createdAt'])
-        && str(request.resource.data.name, 40) && str(request.resource.data.uni, 80);
+        && str(request.resource.data.name, 40) && str(request.resource.data.uni, 80)
+        && request.resource.data.favs is list && request.resource.data.favs.size() == 0
+        && now(request.resource.data.createdAt);
       allow update: if (signedIn() && me() == uid && changed().hasOnly(['name', 'uni', 'favs'])
+                        && str(request.resource.data.name, 40) && str(request.resource.data.uni, 80)
                         && request.resource.data.favs is list && request.resource.data.favs.size() <= 300)
-                    || (isAdmin() && changed().hasOnly(['banned']));
+                    || (isAdmin() && changed().hasOnly(['banned']) && request.resource.data.banned is bool);
       allow delete: if isAdmin();
+
+      // Seller's bank details for bank transfers and payouts. Only the owner and admins can read.
+      match /private/{doc} {
+        allow read: if (signedIn() && me() == uid) || isAdmin();
+        allow write: if signedIn() && me() == uid && doc == 'payout'
+          && request.resource.data.keys().hasOnly(['bank', 'branch', 'accountName', 'accountNo', 'updatedAt'])
+          && str(request.resource.data.bank, 60) && str(request.resource.data.accountName, 80)
+          && str(request.resource.data.accountNo, 30) && optStr(request.resource.data, 'branch', 60);
+      }
     }
 
     // ---------- listings (items and services) ----------
     match /listings/{id} {
       function owner() { return signedIn() && resource.data.sellerId == me(); }
       function valid(d) {
-        return str(d.title, 90) && str(d.desc, 800) && d.price is number && d.price >= 0 && d.price <= 10000000
-          && str(d.cat, 30)
+        return str(d.title, 90) && str(d.desc, 800)
+          && d.price is number && d.price >= 0 && d.price <= 10000000
+          && (!('was' in d) || d.was == null || (d.was is number && d.was > d.price && d.was <= 10000000))
+          && str(d.cat, 30) && optStr(d, 'unit', 30) && optStr(d, 'cond', 20)
+          // societies, events, classes and stalls
+          && optStr(d, 'society', 80) && optStr(d, 'venue', 100) && optStr(d, 'schedule', 120)
+          && (!('eventAt' in d) || d.eventAt == null || d.eventAt is int)
+          && (!('stock' in d) || d.stock == null || (d.stock is int && d.stock >= 1 && d.stock <= 10000))
           && (!('img' in d) || d.img == null || (d.img is string && d.img.size() < 300000))
           && (!('imgs' in d) || d.imgs == null || (d.imgs is list && d.imgs.size() <= 4));
       }
       allow read: if resource.data.status == 'active' || owner() || isAdmin();
       allow create: if isAdmin() || (member()
+        && request.resource.data.keys().hasOnly(['title', 'desc', 'cat', 'service', 'price', 'was', 'unit', 'cond', 'img', 'imgs',
+             'society', 'eventAt', 'venue', 'schedule', 'stock',
+             'sellerId', 'sellerName', 'sellerUni', 'sellerJoined', 'sold', 'featured', 'status', 'createdAt'])
         && request.resource.data.sellerId == me()
+        && request.resource.data.sellerName == myName()          // no pretending to be someone else
+        && request.resource.data.sellerUni == profile().uni
         && valid(request.resource.data)
         && request.resource.data.sold == 0 && request.resource.data.featured == false
+        && now(request.resource.data.createdAt)
         && (request.resource.data.status == 'pending'
             || (request.resource.data.status == 'active' && !needsApproval())));
       // Owners edit their own listing; they can pause / mark sold / re-open, but cannot
       // approve their own pending listing or un-hide one an admin hid.
       allow update: if isAdmin() || (owner() && member()
-        && changed().hasOnly(['title', 'desc', 'price', 'was', 'unit', 'cond', 'img', 'imgs', 'cat', 'status', 'sold'])
+        && changed().hasOnly(['title', 'desc', 'price', 'was', 'unit', 'cond', 'img', 'imgs', 'cat', 'status', 'sold',
+             'society', 'eventAt', 'venue', 'schedule', 'stock'])
+        // an admin-verified society name cannot be changed by the seller (re-verification needed)
+        && (!('society' in changed()) || resource.data.get('societyVerified', false) == false)
         && valid(request.resource.data)
+        && request.resource.data.sold >= resource.data.sold
         && (request.resource.data.status == resource.data.status
             || (resource.data.status in ['active', 'paused', 'sold']
                 && request.resource.data.status in ['active', 'paused', 'sold'])));
@@ -74,40 +112,65 @@ service cloud.firestore {
     }
 
     // ---------- orders: one per seller ----------
+    // method: cash | bank | online.  Online orders start as "awaiting_payment" and only the
+    // payment Cloud Function can move them to "placed" after PayHere confirms the money.
     match /orders/{id} {
       function buyer() { return signedIn() && resource.data.buyerId == me(); }
       function seller() { return signedIn() && resource.data.sellerId == me(); }
+      function d() { return request.resource.data; }
       allow read: if buyer() || seller() || isAdmin();
       allow create: if member()
-        && request.resource.data.buyerId == me()
-        && request.resource.data.sellerId != me()
-        && request.resource.data.status == 'placed'
-        && request.resource.data.lines is list && request.resource.data.lines.size() <= 50;
+        && d().keys().hasOnly(['buyerId', 'buyerName', 'buyerUni', 'sellerId', 'sellerName', 'lines', 'total',
+             'name', 'phone', 'place', 'pay', 'method', 'note', 'status', 'paymentStatus', 'createdAt'])
+        && d().buyerId == me() && d().buyerName == myName()
+        && d().sellerId != me()
+        && d().lines is list && d().lines.size() > 0 && d().lines.size() <= 50
+        && d().total is number && d().total >= 0
+        && str(d().name, 40) && str(d().phone, 20) && str(d().place, 60) && str(d().pay, 60) && optStr(d(), 'note', 300)
+        && now(d().createdAt)
+        && d().paymentStatus == 'unpaid'
+        && ((d().method in ['cash', 'bank'] && d().status == 'placed')
+            || (d().method == 'online' && d().status == 'awaiting_payment'));
       allow update: if isAdmin()
-        || (seller() && changed().hasOnly(['status', 'updatedAt'])
-            && request.resource.data.status in ['confirmed', 'ready', 'completed', 'cancelled']
-            && resource.data.status != 'completed' && resource.data.status != 'cancelled')
+        // seller: move the order forward, share bank details, confirm cash / bank money received
+        || (seller() && changed().hasOnly(['status', 'updatedAt', 'sellerBank', 'paymentStatus'])
+            && resource.data.status in ['placed', 'confirmed', 'ready']
+            && d().status in ['placed', 'confirmed', 'ready', 'completed', 'cancelled']
+            && (d().paymentStatus == resource.data.paymentStatus
+                || (resource.data.method != 'online' && d().paymentStatus == 'paid')))
+        // buyer: cancel early, or tell the seller a bank transfer was sent
         || (buyer() && changed().hasOnly(['status', 'updatedAt'])
-            && request.resource.data.status == 'cancelled'
-            && resource.data.status in ['placed', 'confirmed']);
+            && d().status == 'cancelled'
+            && resource.data.status in ['awaiting_payment', 'placed', 'confirmed']
+            && resource.data.paymentStatus != 'paid')
+        || (buyer() && changed().hasOnly(['buyerPaidAt', 'paymentRef', 'updatedAt'])
+            && resource.data.method == 'bank' && str(d().paymentRef, 60));
       allow delete: if isAdmin();
     }
 
-    // ---------- reviews ----------
+    // ---------- reviews: one per person per listing (document id = listingId_uid) ----------
     match /reviews/{id} {
       allow read: if true;
       allow create: if member()
-        && request.resource.data.byId == me()
+        && id == request.resource.data.listingId + '_' + me()
+        && request.resource.data.keys().hasOnly(['listingId', 'sellerId', 'byId', 'byName', 'stars', 'text', 'createdAt'])
+        && request.resource.data.byId == me() && request.resource.data.byName == myName()
         && request.resource.data.sellerId != me()
         && request.resource.data.stars is int && request.resource.data.stars >= 1 && request.resource.data.stars <= 5
-        && str(request.resource.data.text, 300);
+        && str(request.resource.data.text, 300)
+        && now(request.resource.data.createdAt);
       allow delete: if (signedIn() && resource.data.byId == me()) || isAdmin();
       allow update: if false;
     }
 
-    // ---------- reports (flag a listing) ----------
+    // ---------- reports: one per person per listing ----------
     match /reports/{id} {
-      allow create: if member() && request.resource.data.byId == me() && str(request.resource.data.reason, 300);
+      allow create: if member()
+        && id == request.resource.data.listingId + '_' + me()
+        && request.resource.data.byId == me() && request.resource.data.byName == myName()
+        && request.resource.data.status == 'open'
+        && str(request.resource.data.reason, 300) && str(request.resource.data.listingTitle, 90)
+        && now(request.resource.data.createdAt);
       allow read, update, delete: if isAdmin();
     }
 
@@ -116,18 +179,21 @@ service cloud.firestore {
       function inThread() { return signedIn() && me() in resource.data.members; }
       allow read: if inThread() || isAdmin();
       allow create: if member()
-        && request.resource.data.buyerId == me()
-        && request.resource.data.members.size() == 2
-        && me() in request.resource.data.members
-        && request.resource.data.sellerId in request.resource.data.members;
-      allow update: if inThread() && changed().hasOnly(['lastText', 'updatedAt', 'unread']);
+        && request.resource.data.buyerId == me() && request.resource.data.buyerName == myName()
+        && request.resource.data.sellerId != me()
+        && request.resource.data.members == [me(), request.resource.data.sellerId]
+        // the seller must really own that listing
+        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.sellerId == request.resource.data.sellerId;
+      allow update: if inThread() && changed().hasOnly(['lastText', 'updatedAt', 'unread']) && optStr(request.resource.data, 'lastText', 120);
       allow delete: if isAdmin();
 
       match /messages/{mid} {
         function parentMembers() { return get(/databases/$(database)/documents/threads/$(id)).data.members; }
         allow read: if (signedIn() && me() in parentMembers()) || isAdmin();
         allow create: if member() && me() in parentMembers()
-          && request.resource.data.from == me() && str(request.resource.data.text, 1000);
+          && request.resource.data.keys().hasOnly(['from', 'text', 'createdAt'])
+          && request.resource.data.from == me() && str(request.resource.data.text, 1000)
+          && now(request.resource.data.createdAt);
         allow update, delete: if isAdmin();
       }
     }

@@ -13,6 +13,8 @@ Follow these steps to make it a **real marketplace** where everyone sees the sam
 3. After about a minute the site is at `https://<your-username>.github.io/unimart/`.
 
 ## 2. Create the Firebase project
+*Already done for `unimart-77eca`: its keys are in `js/config.js`. Skip to step 3.*
+
 1. Go to <https://console.firebase.google.com> → **Add project** → name it `unimart` → you can turn Google Analytics off → **Create**.
 2. On the project home click the **web** icon `</>` → nickname `unimart-web` → **Register app**.
 3. Firebase shows a `firebaseConfig` block. Copy `apiKey`, `authDomain`, `projectId` and `appId` into **`js/config.js`**:
@@ -37,6 +39,8 @@ To allow only university emails, set `allowedEmailDomains: ["ac.lk"]` in `js/con
 ## 4. Create the database and paste the rules
 1. **Build → Firestore Database → Create database** → choose a location close to Sri Lanka (e.g. `asia-south1` Mumbai) → **Start in production mode**.
 2. Open the **Rules** tab, delete everything, paste the whole of [`firestore.rules`](firestore.rules) → **Publish**.
+   Or with the Firebase CLI: `firebase deploy --only firestore:rules`.
+   **Do this every time `firestore.rules` changes**, otherwise new features will be refused by the database.
 
 No indexes are needed. The full list of collections and fields is in [SCHEMA.md](SCHEMA.md).
 
@@ -72,6 +76,11 @@ GitHub Pages updates within a minute.
 py -m http.server 8000
 ```
 Open <http://localhost:8000>. With empty keys it runs in demo mode: any name signs you in and the admin password is `demo`.
+Add `?demo=1` to the address (e.g. `https://meshannawod.github.io/unimart/?demo=1`) to try the demo even when Firebase keys are set. Demo data stays in that browser only.
+
+## Payments and security
+- [PAYMENTS.md](PAYMENTS.md): cash, bank transfer and online payments with PayHere.
+- [SECURITY.md](SECURITY.md): what protects the data, and the console settings you should turn on.
 If you add Firebase keys, also add `localhost` to Authorized domains (it is there by default).
 
 ## What the admin can do

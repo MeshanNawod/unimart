@@ -86,9 +86,30 @@ UM.firebaseBackend = function (cfg, emit) {
       return b.commit();
     }),
     setFavs: wrap(({ auth, fs }, f) => fs.doc("users/" + auth.currentUser.uid).update({ favs: f })),
-    addReview: wrap(({ fs }, r) => fs.collection("reviews").add(r)),
+    addReview: wrap(async ({ fs }, r) => {
+      const ref = fs.doc("reviews/" + r.listingId + "_" + r.byId);
+      if ((await ref.get()).exists) throw new Error("You already reviewed this listing.");
+      return ref.set(r);
+    }),
     deleteReview: wrap(({ fs }, id) => fs.doc("reviews/" + id).delete()),
-    report: wrap(({ fs }, r) => fs.collection("reports").add(r)),
+    report: wrap(({ fs }, r) => fs.doc("reports/" + r.listingId + "_" + r.byId).set(r)
+      .catch((e) => { if (e.code === "permission-denied") throw new Error("You already reported this listing. An admin will check it."); throw e; })),
+    updateOrder: wrap(({ fs }, id, p) => fs.doc("orders/" + id).update(p)),
+    savePayout: wrap(({ auth, fs }, p) => fs.doc("users/" + auth.currentUser.uid + "/private/payout").set(p)),
+    getPayout: wrap(async ({ fs }, uid) => { const d = await fs.doc("users/" + uid + "/private/payout").get(); return d.exists ? d.data() : null; }),
+    /* online payment: ask our Cloud Function for a signed PayHere form, then go to PayHere */
+    startPayment: wrap(async (f, orderId) => {
+      if (!(cfg.payments && cfg.payments.online)) throw new Error("Online payment is not switched on yet.");
+      if (!window.firebase.functions) await load(`https://www.gstatic.com/firebasejs/${V}/firebase-functions-compat.js`);
+      const call = firebase.app().functions(cfg.payments.functionsRegion || "asia-south1").httpsCallable("createPayHerePayment");
+      const { data } = await call({ orderId });
+      if (!/^https:\/\/(sandbox\.|www\.)payhere\.lk\//.test(data.action)) throw new Error("Unexpected payment address.");
+      const form = document.createElement("form");
+      form.method = "POST"; form.action = data.action; form.style.display = "none";
+      Object.keys(data.fields).forEach((k) => { const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = data.fields[k]; form.appendChild(i); });
+      document.body.appendChild(form); form.submit();
+      return true;
+    }),
 
     openThread: wrap(({ fs }, t) => fs.collection("threads").add(t).then((r) => r.id)),
     watchMessages(id) {

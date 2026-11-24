@@ -5,10 +5,10 @@
    See SETUP.md for the full step-by-step guide. */
 window.UM_CONFIG = {
   firebase: {
-    apiKey: "",
-    authDomain: "",
-    projectId: "",
-    appId: ""
+    apiKey: "AIzaSyCw7HXpNn8JyFaMqlBPcem9tr1ogmA_SsU",
+    authDomain: "unimart-77eca.firebaseapp.com",
+    projectId: "unimart-77eca",
+    appId: "1:438907826752:web:efbe39903705aa44afa5a5"
   },
 
   /* Only allow sign-up with these email endings, e.g. ["ac.lk", "sliit.lk"].
@@ -18,6 +18,14 @@ window.UM_CONFIG = {
   /* Password for the admin page in DEMO mode only. With Firebase, admins are set in the
      Firebase console (collection "admins"), see ADMINS section in SETUP.md. */
   demoAdminPassword: "demo",
+
+  /* Payments. Cash and bank transfer always work (buyer pays the seller directly).
+     Online card / eZ Cash / mCash / Genie payments go through PayHere (payhere.lk) and need the
+     Cloud Function in functions/ deployed first; then set online: true. See PAYMENTS.md. */
+  payments: {
+    online: false,
+    functionsRegion: "asia-south1"
+  },
 
   siteName: "UniMart",
   currency: "Rs"
