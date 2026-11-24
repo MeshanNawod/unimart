@@ -1,0 +1,9 @@
+{
+  "name": "UniMart · Campus marketplace",
+  "short_name": "UniMart",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f7",
+  "theme_color": "#e8452c",
+  "icons": [{ "src": "img/logo.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

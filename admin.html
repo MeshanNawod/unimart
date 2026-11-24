@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d2433">
+<meta name="robots" content="noindex">
+<title>UniMart Admin</title>
+<link rel="icon" type="image/svg+xml" href="img/logo.svg">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="admin-page">
+
+<header class="topbar dark">
+  <div class="wrap topbar-row">
+    <a class="logo" href="index.html" aria-label="UniMart shop">
+      <img src="img/logo.svg" alt="" width="34" height="34">
+      <span>Uni<b>Mart</b> <small class="admin-tag">Admin</small></span>
+    </a>
+    <nav class="topnav show">
+      <a href="index.html">View shop</a>
+      <a href="#" id="admin-out" hidden>Sign out</a>
+    </nav>
+  </div>
+</header>
+
+<main id="admin" class="wrap"><p class="loading">Loading…</p></main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/db-local.js"></script>
+<script src="js/db-firebase.js"></script>
+<script src="js/store.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

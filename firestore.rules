@@ -1,0 +1,133 @@
+rules_version = '2';
+// UniMart – Firestore security rules.
+// Paste this whole file into Firebase console → Firestore Database → Rules → Publish.
+// Admins are NOT listed here: add a document /admins/{yourUid} in the console (see SETUP.md).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(me())); }
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    function profile() { return get(/databases/$(database)/documents/users/$(me())).data; }
+    function hasProfile() { return exists(/databases/$(database)/documents/users/$(me())); }
+    // A user who may post, buy, chat and review: verified email, has a profile, not banned.
+    // To allow only university emails, add:  && request.auth.token.email.matches('.*[.]ac[.]lk$')
+    function member() { return verified() && hasProfile() && profile().get('banned', false) == false; }
+    function needsApproval() {
+      return exists(/databases/$(database)/documents/settings/site)
+        && get(/databases/$(database)/documents/settings/site).data.get('requireApproval', false) == true;
+    }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function str(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+
+    // ---------- admins: create these by hand in the console ----------
+    match /admins/{uid} {
+      allow get: if signedIn() && me() == uid;
+      allow list, write: if false;
+    }
+
+    // ---------- site settings ----------
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- public profiles ----------
+    match /users/{uid} {
+      allow read: if true;
+      allow create: if signedIn() && me() == uid
+        && request.resource.data.keys().hasOnly(['name', 'uni', 'favs', 'createdAt'])
+        && str(request.resource.data.name, 40) && str(request.resource.data.uni, 80);
+      allow update: if (signedIn() && me() == uid && changed().hasOnly(['name', 'uni', 'favs'])
+                        && request.resource.data.favs is list && request.resource.data.favs.size() <= 300)
+                    || (isAdmin() && changed().hasOnly(['banned']));
+      allow delete: if isAdmin();
+    }
+
+    // ---------- listings (items and services) ----------
+    match /listings/{id} {
+      function owner() { return signedIn() && resource.data.sellerId == me(); }
+      function valid(d) {
+        return str(d.title, 90) && str(d.desc, 800) && d.price is number && d.price >= 0 && d.price <= 10000000
+          && str(d.cat, 30) && (!('img' in d) || (d.img is string && d.img.size() < 400000));
+      }
+      allow read: if resource.data.status == 'active' || owner() || isAdmin();
+      allow create: if isAdmin() || (member()
+        && request.resource.data.sellerId == me()
+        && valid(request.resource.data)
+        && request.resource.data.sold == 0 && request.resource.data.featured == false
+        && (request.resource.data.status == 'pending'
+            || (request.resource.data.status == 'active' && !needsApproval())));
+      // Owners edit their own listing; they can pause / mark sold / re-open, but cannot
+      // approve their own pending listing or un-hide one an admin hid.
+      allow update: if isAdmin() || (owner() && member()
+        && changed().hasOnly(['title', 'desc', 'price', 'was', 'unit', 'cond', 'img', 'cat', 'status', 'sold'])
+        && valid(request.resource.data)
+        && (request.resource.data.status == resource.data.status
+            || (resource.data.status in ['active', 'paused', 'sold']
+                && request.resource.data.status in ['active', 'paused', 'sold'])));
+      allow delete: if owner() || isAdmin();
+    }
+
+    // ---------- orders: one per seller ----------
+    match /orders/{id} {
+      function buyer() { return signedIn() && resource.data.buyerId == me(); }
+      function seller() { return signedIn() && resource.data.sellerId == me(); }
+      allow read: if buyer() || seller() || isAdmin();
+      allow create: if member()
+        && request.resource.data.buyerId == me()
+        && request.resource.data.sellerId != me()
+        && request.resource.data.status == 'placed'
+        && request.resource.data.lines is list && request.resource.data.lines.size() <= 50;
+      allow update: if isAdmin()
+        || (seller() && changed().hasOnly(['status', 'updatedAt'])
+            && request.resource.data.status in ['confirmed', 'ready', 'completed', 'cancelled']
+            && resource.data.status != 'completed' && resource.data.status != 'cancelled')
+        || (buyer() && changed().hasOnly(['status', 'updatedAt'])
+            && request.resource.data.status == 'cancelled'
+            && resource.data.status in ['placed', 'confirmed']);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- reviews ----------
+    match /reviews/{id} {
+      allow read: if true;
+      allow create: if member()
+        && request.resource.data.byId == me()
+        && request.resource.data.sellerId != me()
+        && request.resource.data.stars is int && request.resource.data.stars >= 1 && request.resource.data.stars <= 5
+        && str(request.resource.data.text, 300);
+      allow delete: if (signedIn() && resource.data.byId == me()) || isAdmin();
+      allow update: if false;
+    }
+
+    // ---------- reports (flag a listing) ----------
+    match /reports/{id} {
+      allow create: if member() && request.resource.data.byId == me() && str(request.resource.data.reason, 300);
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ---------- chat between a buyer and a seller ----------
+    match /threads/{id} {
+      function inThread() { return signedIn() && me() in resource.data.members; }
+      allow read: if inThread() || isAdmin();
+      allow create: if member()
+        && request.resource.data.buyerId == me()
+        && request.resource.data.members.size() == 2
+        && me() in request.resource.data.members
+        && request.resource.data.sellerId in request.resource.data.members;
+      allow update: if inThread() && changed().hasOnly(['lastText', 'updatedAt', 'unread']);
+      allow delete: if isAdmin();
+
+      match /messages/{mid} {
+        function parentMembers() { return get(/databases/$(database)/documents/threads/$(id)).data.members; }
+        allow read: if (signedIn() && me() in parentMembers()) || isAdmin();
+        allow create: if member() && me() in parentMembers()
+          && request.resource.data.from == me() && str(request.resource.data.text, 1000);
+        allow update, delete: if isAdmin();
+      }
+    }
+  }
+}
