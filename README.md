@@ -9,15 +9,18 @@ A campus marketplace for Sri Lankan university students. Students buy and sell *
 It runs as a plain static site on GitHub Pages, with **Firebase** (free plan) for accounts and the database. Without Firebase keys it runs in **demo mode** so you can try everything right away.
 
 ## Features
-- Home with search, 12 categories, Flash deals with countdown, popular services, newest listings
-- Browse with filters: items/services, category, university, max price, sort
-- Listing page: photo, price and discount, condition, seller rating and sales, reviews, similar listings, report button
-- Sell and edit: items or services, photo upload (auto-resized), pause, mark sold, delete
+- Home with search, 12 categories, Flash deals with countdown, recently viewed, popular services, newest listings
+- Browse with filters: items/services, category, university, max price, sort, and “Show more”
+- Listing page: up to 4 photos, price and discount, condition, seller rating and sales, reviews, similar listings, share to WhatsApp / copy link, report button
+- Seller profile page: all their listings and reviews
+- Sell and edit: items or services, up to 4 photos (auto-resized, pick the cover), pause, mark sold, delete
 - Cart → checkout → one order per seller; pay in person (cash or bank transfer)
 - Orders: “I bought” and “I sold”, with status steps (placed → confirmed → ready → completed / cancelled)
 - Chat between buyer and seller with unread badges
 - Saved listings, profile, Google and email sign-in with email verification
-- **Admin panel** (`admin.html`): dashboard, approve/hide/feature/delete listings, all orders, suspend users, reports, site settings, sample data
+- Dark mode (follows the phone, or pick in the footer)
+- Installs like an app on phones and opens without internet; rich link previews on WhatsApp/Facebook
+- **Admin panel** (`admin.html`): dashboard, approve/hide/feature/delete listings, all orders, suspend users, reports, site settings, sample data, CSV export of listings / orders / users
 
 ## Guides
 | Guide | What it covers |
@@ -39,7 +42,9 @@ It runs as a plain static site on GitHub Pages, with **Firebase** (free plan) fo
 | `js/ui.js` | Shared helpers (price format, icons, toasts) |
 | `js/app.js` | Shop pages |
 | `js/admin.js` | Admin pages |
-| `css/style.css` | All styles |
+| `css/style.css` | All styles (light and dark) |
+| `sw.js` | Offline support and app install. Change `VERSION` after editing files |
+| `img/` | Logo, app icons, link-preview image |
 
 ## Try it on your computer
 ```

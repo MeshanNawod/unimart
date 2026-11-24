@@ -51,7 +51,9 @@ service cloud.firestore {
       function owner() { return signedIn() && resource.data.sellerId == me(); }
       function valid(d) {
         return str(d.title, 90) && str(d.desc, 800) && d.price is number && d.price >= 0 && d.price <= 10000000
-          && str(d.cat, 30) && (!('img' in d) || (d.img is string && d.img.size() < 400000));
+          && str(d.cat, 30)
+          && (!('img' in d) || d.img == null || (d.img is string && d.img.size() < 300000))
+          && (!('imgs' in d) || d.imgs == null || (d.imgs is list && d.imgs.size() <= 4));
       }
       allow read: if resource.data.status == 'active' || owner() || isAdmin();
       allow create: if isAdmin() || (member()
@@ -63,7 +65,7 @@ service cloud.firestore {
       // Owners edit their own listing; they can pause / mark sold / re-open, but cannot
       // approve their own pending listing or un-hide one an admin hid.
       allow update: if isAdmin() || (owner() && member()
-        && changed().hasOnly(['title', 'desc', 'price', 'was', 'unit', 'cond', 'img', 'cat', 'status', 'sold'])
+        && changed().hasOnly(['title', 'desc', 'price', 'was', 'unit', 'cond', 'img', 'imgs', 'cat', 'status', 'sold'])
         && valid(request.resource.data)
         && (request.resource.data.status == resource.data.status
             || (resource.data.status in ['active', 'paused', 'sold']

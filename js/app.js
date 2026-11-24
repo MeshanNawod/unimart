@@ -41,6 +41,7 @@
     const services = all.filter(isService).sort((a, b) => b.sold - a.sold).slice(0, 10);
     const items = all.filter((l) => !isService(l)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 12);
     const sellers = new Set(all.map((l) => l.sellerId)).size;
+    const seen = recent().map((id) => all.find((l) => l.id === id)).filter(Boolean).slice(0, 10);
     return `
     <section class="hero">
       <div>
@@ -65,6 +66,10 @@
       <div class="band-head"><h2>Flash deals</h2><span class="timer" id="timer"></span><a href="#/browse?sort=deal">See all</a></div>
       <div class="row">${deals.map(card).join("")}</div>
     </section>` : ""}
+    ${seen.length ? `<section class="band">
+      <div class="band-head"><h2>Recently viewed</h2><button class="linkbtn" id="clear-recent">Clear</button></div>
+      <div class="row">${seen.map(card).join("")}</div>
+    </section>` : ""}
     ${services.length ? `<section class="band">
       <div class="band-head"><h2>Popular services</h2><a href="#/browse?type=service">See all</a></div>
       <div class="row">${services.map(card).join("")}</div>
@@ -80,6 +85,7 @@
     </section>`;
   };
   pages.home.after = () => {
+    const cr = $("#clear-recent"); if (cr) cr.onclick = () => { try { localStorage.removeItem(RV); } catch (e) {} render(true); };
     const el = $("#timer"); if (!el) return;
     const end = new Date(); end.setHours(23, 59, 59, 0);
     const tick = () => {
@@ -91,6 +97,7 @@
   };
 
   /* ---------- browse / search ---------- */
+  const PAGE = 20;
   pages.browse = (q) => {
     const f = { q: q.get("q") || "", cat: q.get("cat") || "", uni: q.get("uni") || "", type: q.get("type") || "", sort: q.get("sort") || "popular", max: q.get("max") || "" };
     let list = S.allListings().filter((l) => l.status === "active");
@@ -107,6 +114,7 @@
       deal: (a, b) => (b.was ? 1 - b.price / b.was : 0) - (a.was ? 1 - a.price / a.was : 0)
     };
     list.sort(sorts[f.sort] || sorts.popular);
+    const shown = Math.max(PAGE, +q.get("n") || PAGE);
     const title = f.cat ? esc(cat(f.cat).name) : f.q ? `Results for “${esc(f.q)}”` : f.type === "service" ? "Services" : f.type === "item" ? "Items" : "Everything";
     return `
     <div class="crumbs"><a href="#/">Home</a> › ${title}</div>
@@ -119,9 +127,11 @@
       <label>Max price<input name="max" type="number" min="0" step="100" placeholder="Any" value="${esc(f.max)}"></label>
       <label>Sort<select name="sort">${[["popular", "Best selling"], ["low", "Price: low to high"], ["high", "Price: high to low"], ["deal", "Biggest discount"], ["new", "Newest"]].map(([v, t]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
     </form>
-    ${grid(list, `No listings match. <a href="#/sell">Be the first to sell one</a>.`)}`;
+    ${grid(list.slice(0, shown), `No listings match. <a href="#/sell">Be the first to sell one</a>.`)}
+    ${list.length > shown ? `<div class="center more"><button class="btn outline" id="more">Show more (${list.length - shown} left)</button></div>` : ""}`;
   };
-  pages.browse.after = () => {
+  pages.browse.after = (q) => {
+    const more = $("#more"); if (more) more.onclick = () => { q.set("n", (+q.get("n") || PAGE) + PAGE); history.replaceState(null, "", "#/browse?" + q); render(true); };
     const form = $("#filters");
     form.addEventListener("change", () => {
       const p = new URLSearchParams();
@@ -144,7 +154,10 @@
     <div class="crumbs"><a href="#/">Home</a> › <a href="#/browse?cat=${l.cat}">${esc(cat(l.cat).name)}</a></div>
     ${l.status !== "active" ? `<div class="notice">${statusLabel[l.status] || l.status}${l.status === "pending" ? ": an admin will check it soon." : ""}</div>` : ""}
     <div class="detail">
-      ${thumb(l, "big")}
+      <div class="gallery">
+        ${thumb(l, "big")}
+        ${l.imgs && l.imgs.length > 1 ? `<div class="gthumbs">${l.imgs.map((src, i) => `<button type="button" class="${i ? "" : "on"}" data-img="${i}" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join("")}</div>` : ""}
+      </div>
       <div class="info">
         <h1>${esc(l.title)}</h1>
         <div class="meta">${stars(sel.rating || 5)} <span>${sel.rating || "New"}</span> · <span>${l.sold || 0} ${svc ? "booked" : "sold"}</span>${l.cond ? ` · <span class="pill">${esc(l.cond)}</span>` : ""}</div>
@@ -168,9 +181,15 @@
           <button class="btn icon ${S.isFav(l.id) ? "on" : ""}" id="fav" aria-label="Save">♥</button>
         </div>` : ""}
         <div class="seller">
-          <div class="avatar">${esc((sel.name || "?")[0])}</div>
-          <div><b>${esc(sel.name)}</b><small>${esc(sel.uni)} · ${sel.sales} sales${sel.joined ? " · since " + esc(sel.joined) : ""}</small></div>
+          <a class="avatar" href="#/seller/${esc(l.sellerId)}">${esc((sel.name || "?")[0])}</a>
+          <div><a href="#/seller/${esc(l.sellerId)}"><b>${esc(sel.name)}</b></a><small>${esc(sel.uni)} · ${sel.sales} sales${sel.joined ? " · since " + esc(sel.joined) : ""}</small></div>
           ${mine ? "" : `<button class="btn ghost" id="chat">Message</button>`}
+        </div>
+        <div class="share">
+          <span class="muted small">Share:</span>
+          <a class="chip" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(l.title + " · " + money(l.price) + " on UniMart " + location.href.split("#")[0] + "#/item/" + l.id)}">WhatsApp</a>
+          <button class="chip" type="button" id="copy-link">Copy link</button>
+          ${navigator.share ? `<button class="chip" type="button" id="native-share">More…</button>` : ""}
         </div>
       </div>
     </div>
@@ -192,6 +211,14 @@
   };
   pages.item.after = (q, id) => {
     const l = S.listing(id); if (!l) return;
+    $$("[data-img]").forEach((b) => (b.onclick = () => {
+      $(".gallery .thumb img").src = l.imgs[+b.dataset.img];
+      $$("[data-img]").forEach((x) => x.classList.toggle("on", x === b));
+    }));
+    const link = location.href.split("#")[0] + "#/item/" + l.id;
+    const cl = $("#copy-link"); if (cl) cl.onclick = () => navigator.clipboard.writeText(link).then(() => toast("Link copied"), () => prompt("Copy this link:", link));
+    const ns = $("#native-share"); if (ns) ns.onclick = () => navigator.share({ title: l.title, text: l.title + " · " + money(l.price), url: link }).catch(() => {});
+    rememberView(l.id);
     const qty = () => Math.max(1, parseInt(($("#qty") || {}).value, 10) || 1);
     $$("[data-q]").forEach((b) => (b.onclick = () => { $("#qty").value = Math.max(1, qty() + +b.dataset.q); }));
     const add = $("#add"); if (add) add.onclick = () => { S.addToCart(l.id, qty()); toast("Added to cart"); };
@@ -211,6 +238,37 @@
       act(rf.querySelector("button"), () => S.addReview(l, +rf.stars.value, rf.text.value.trim()), "Review posted").then(() => rf.reset());
     };
   };
+
+  /* ---------- seller profile ---------- */
+  pages.seller = (q, id) => {
+    const theirs = S.allListings().filter((l) => l.sellerId === id && l.status === "active").sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const any = theirs[0] || S.everyListing().find((l) => l.sellerId === id);
+    if (!any) return S.ready ? `<div class="empty">This seller has no listings right now. <a href="#/browse">Keep browsing</a></div>` : `<p class="loading">Loading…</p>`;
+    const sel = S.sellerOf(any);
+    const revs = S.sellerReviews(id);
+    const titles = {}; S.everyListing().forEach((l) => (titles[l.id] = l.title));
+    const svc = theirs.filter(isService).length;
+    return `
+    <div class="crumbs"><a href="#/">Home</a> › Seller</div>
+    <div class="profile panel">
+      <div class="avatar big">${esc((sel.name || "?")[0])}</div>
+      <div class="grow"><h1>${esc(sel.name)}</h1><small>${esc(sel.uni)}${sel.joined ? " · on UniMart since " + esc(sel.joined) : ""}</small>
+        <div class="meta">${stars(sel.rating || 5)} <b>${sel.rating || "New"}</b> · ${sel.sales} sales · ${revs.length} reviews</div></div>
+      <a class="btn outline" href="#/browse?uni=${encodeURIComponent(sel.uni || "")}">More from ${esc((sel.uni || "").replace(/^University of /, ""))}</a>
+    </div>
+    <section class="band"><div class="band-head"><h2>Listings <small class="muted">${theirs.length - svc} items · ${svc} services</small></h2></div>${grid(theirs, "Nothing for sale right now.")}</section>
+    <section class="panel"><h2>Reviews</h2>
+      ${revs.slice(0, 20).map((r) => `<div class="review">${stars(r.stars)} <b>${esc(r.byName)}</b> <small>${ago(r.createdAt)} · <a href="#/item/${r.listingId}">${esc(titles[r.listingId] || "listing")}</a></small><p>${esc(r.text)}</p></div>`).join("") || `<p class="muted">No reviews yet.</p>`}
+    </section>`;
+  };
+
+  /* ---------- recently viewed (this browser only) ---------- */
+  const RV = "unimart-recent";
+  function recent() { try { return JSON.parse(localStorage.getItem(RV)) || []; } catch (e) { return []; } }
+  function rememberView(id) {
+    const list = [id].concat(recent().filter((x) => x !== id)).slice(0, 12);
+    try { localStorage.setItem(RV, JSON.stringify(list)); } catch (e) {}
+  }
 
   /* ---------- sell / edit ---------- */
   pages.sell = (q) => {
@@ -237,8 +295,8 @@
         <label>Old price (optional, shows a deal)<input name="was" type="number" min="0" step="10" value="${v("was")}"></label>
       </div>
       <label>Description<textarea name="desc" rows="5" required maxlength="800" placeholder="What is it, what condition, where can buyers meet you?">${v("desc")}</textarea></label>
-      <label>Photo (optional)<input name="photo" type="file" accept="image/*"></label>
-      <img id="preview" class="preview" alt="" ${e && e.img ? `src="${esc(e.img)}"` : "hidden"}>
+      <label>Photos (up to 4, the first one is the cover)<input name="photo" type="file" accept="image/*" multiple></label>
+      <div class="shots" id="shots"></div>
       <p class="muted">Selling as <b>${esc(S.user.name)}</b> at <b>${esc(S.user.uni)}</b>. No fees.
         ${S.settings.requireApproval && !e ? "New listings are checked by an admin before they go live." : ""}
         Do not sell exam answers, assignments written for others, or anything illegal.</p>
@@ -248,23 +306,36 @@
   pages.sell.after = (q) => {
     const f = $("#sell"); if (!f) return;
     const e = q.get("edit") ? S.listing(q.get("edit")) : null;
-    let photo = e ? e.img || "" : "";
+    let photos = e ? (e.imgs && e.imgs.length ? e.imgs.slice() : e.img ? [e.img] : []) : [];
+    const drawShots = () => {
+      $("#shots").innerHTML = photos.map((p, i) => `<div class="shot"><img src="${esc(p)}" alt="">${i === 0 ? `<span>Cover</span>` : `<button type="button" data-first="${i}" title="Make cover">★</button>`}<button type="button" class="x" data-rm="${i}" aria-label="Remove photo">×</button></div>`).join("");
+      $$("[data-rm]", f).forEach((b) => (b.onclick = () => { photos.splice(+b.dataset.rm, 1); drawShots(); }));
+      $$("[data-first]", f).forEach((b) => (b.onclick = () => { photos.unshift(photos.splice(+b.dataset.first, 1)[0]); drawShots(); }));
+    };
+    drawShots();
     const fillCats = () => {
       const kind = f.kind.value;
       f.cat.innerHTML = UM.categories.filter((c) => c.kind === kind).map((c) => `<option value="${c.id}" ${e && e.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("");
       $("#cond-wrap").hidden = kind === "service"; $("#unit-wrap").hidden = kind !== "service";
     };
     $$("input[name=kind]", f).forEach((r) => (r.onchange = fillCats)); fillCats();
-    f.photo.onchange = () => {
-      const file = f.photo.files[0]; if (!file) return;
+    // shrink each photo to a ~640px JPEG so 4 of them fit inside one Firestore document (1 MB)
+    const shrink = (file) => new Promise((ok, bad) => {
       const img = new Image(), rd = new FileReader();
       rd.onload = () => { img.src = rd.result; };
-      img.onload = () => { // shrink to ~640px JPEG so it fits inside one Firestore document
+      rd.onerror = bad; img.onerror = () => bad(new Error("That file is not a photo."));
+      img.onload = () => {
         const c = document.createElement("canvas"), k = Math.min(1, 640 / Math.max(img.width, img.height));
         c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        photo = c.toDataURL("image/jpeg", 0.72); const p = $("#preview"); p.src = photo; p.hidden = false;
+        ok(c.toDataURL("image/jpeg", 0.7));
       };
       rd.readAsDataURL(file);
+    });
+    f.photo.onchange = async () => {
+      const files = Array.from(f.photo.files).slice(0, 4 - photos.length);
+      if (f.photo.files.length > files.length) toast("Only 4 photos per listing");
+      for (const file of files) { try { photos.push(await shrink(file)); } catch (err) { toast(err.message, true); } }
+      f.photo.value = ""; drawShots();
     };
     f.onsubmit = (ev) => {
       ev.preventDefault();
@@ -272,7 +343,8 @@
       const was = +f.was.value, price = +f.price.value;
       const data = {
         title: f.title.value.trim(), cat: f.cat.value, price, was: was > price ? was : null,
-        desc: f.desc.value.trim(), unit: svc ? f.unit.value : null, cond: svc ? null : f.cond.value, img: photo || null
+        desc: f.desc.value.trim(), unit: svc ? f.unit.value : null, cond: svc ? null : f.cond.value,
+        img: photos[0] || null, imgs: photos.length ? photos.slice(0, 4) : null
       };
       const btn = f.querySelector("button.primary");
       if (e) return act(btn, () => S.updateListing(e.id, data), "Saved").then(() => (location.hash = "#/item/" + e.id));
@@ -559,7 +631,17 @@
     render(false);
     if (location.hash.replace(/^#/, "").split("?")[0] !== before) window.scrollTo(0, 0);
   });
-  S.onChange(() => render(true));
+  // Forms with unsaved work (sell, checkout) only re-draw when sign-in state changes,
+  // so other people's live updates never wipe a half-filled form or picked photos.
+  pages.sell.live = false; pages.checkout.live = false;
+  const authKey = () => [S.ready, S.user && S.user.id, S.user && S.user.needsProfile, S.user && S.user.verified, S.user && S.user.banned].join("|");
+  let lastAuth = authKey();
+  S.onChange(() => {
+    const k = authKey(), changed = k !== lastAuth; lastAuth = k;
+    const name = (location.hash.replace(/^#\/?/, "").split(/[/?]/)[0]) || "home";
+    if (!changed && pages[name] && pages[name].live === false && view.querySelector("form")) return refreshChrome();
+    render(true);
+  });
 
   $("#search-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -573,6 +655,18 @@
     e.preventDefault();
     if (confirm("Clear all demo listings, orders and chats in this browser?")) { S.resetDemo(); S.setQty && S.cart.forEach((c) => S.setQty(c.id, 0)); location.hash = "#/"; toast("Demo reset"); }
   });
+  /* installable app: offline support + "Install app" button where the browser allows it */
+  if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  let installEvt = null;
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; $("#install").hidden = false; });
+  $("#install").onclick = async (e) => { e.preventDefault(); if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("#install").hidden = true; };
+
+  const tp = $("#theme-pick");
+  tp.value = document.documentElement.dataset.theme || "";
+  tp.onchange = () => {
+    if (tp.value) document.documentElement.dataset.theme = tp.value; else delete document.documentElement.dataset.theme;
+    try { if (tp.value) localStorage.setItem("unimart-theme", tp.value); else localStorage.removeItem("unimart-theme"); } catch (e) {}
+  };
   $("#mode-note").textContent = S.live ? "" : " Demo mode: data is stored only in this browser.";
 
   render(false);

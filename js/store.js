@@ -109,6 +109,7 @@
     toggleFav(id) { const f = S.isFav(id) ? S.favs.filter((x) => x !== id) : S.favs.concat(id); return backend.setFavs(f); },
 
     /* reviews & reports */
+    sellerReviews(sellerId) { return cache.reviews.filter((r) => r.sellerId === sellerId).sort((a, b) => b.createdAt - a.createdAt); },
     reviews(listingId) { return cache.reviews.filter((r) => r.listingId === listingId).sort((a, b) => b.createdAt - a.createdAt); },
     addReview(l, stars, text) {
       const u = cache.user;

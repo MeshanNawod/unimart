@@ -39,6 +39,26 @@
 
   const count = (arr, f) => arr.filter(f).length;
 
+  /* CSV export (opens in Excel / Google Sheets) */
+  const day = (t) => (t ? new Date(t).toISOString().slice(0, 16).replace("T", " ") : "");
+  const exporters = {
+    listings: () => [["id", "title", "category", "type", "price", "old price", "status", "featured", "sold", "seller", "university", "created"]]
+      .concat(S.everyListing().map((l) => [l.id, l.title, cat(l.cat).name, l.service ? "service" : "item", l.price, l.was || "", l.status, l.featured ? "yes" : "", l.sold || 0, l.sellerName, l.sellerUni, day(l.createdAt)])),
+    orders: () => [["id", "status", "total", "buyer", "buyer university", "seller", "items", "meet", "pay", "phone", "created"]]
+      .concat(S.admin.orders.map((o) => [o.id, o.status, o.total, o.buyerName, o.buyerUni || "", o.sellerName, o.lines.map((x) => x.title + " x" + x.qty).join("; "), o.place, o.pay, o.phone, day(o.createdAt)])),
+    users: () => [["id", "name", "university", "suspended", "listings", "orders", "joined"]]
+      .concat(S.admin.users.map((u) => [u.id, u.name, u.uni, u.banned ? "yes" : "", count(S.everyListing(), (l) => l.sellerId === u.id), count(S.admin.orders, (o) => o.buyerId === u.id), day(u.createdAt)]))
+  };
+  function download(kind) {
+    const cell = (v) => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) || /^[=+\-@]/.test(s) ? '"' + s.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""') + '"' : s; };
+    const csv = "﻿" + exporters[kind]().map((r) => r.map(cell).join(",")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `unimart-${kind}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  const exportBtn = (kind) => `<button class="btn ghost small" data-csv="${kind}">⬇ Export CSV</button>`;
+
   function dash() {
     const L = S.everyListing(), A = S.admin;
     const gmv = A.orders.filter((o) => o.status === "completed").reduce((s, o) => s + o.total, 0);
@@ -73,6 +93,7 @@
       <div class="toolbar">
         <div class="chips">${[["pending", "Waiting"], ["active", "Live"], ["hidden", "Hidden"], ["paused", "Paused"], ["sold", "Sold"], ["all", "All"]].map(([v, t]) => `<button class="chip ${lfilter === v ? "on" : ""}" data-lf="${v}">${t}${v !== "all" ? ` ${n(v)}` : ""}</button>`).join("")}</div>
         <input id="q" type="search" placeholder="Search title, seller, university" value="${esc(search)}">
+        ${exportBtn("listings")}
       </div>
       <div class="panel table">
         ${L.map((l) => `
@@ -97,7 +118,7 @@
     if (ofilter === "open") O = O.filter((o) => ["placed", "confirmed", "ready"].includes(o.status));
     else if (ofilter !== "all") O = O.filter((o) => o.status === ofilter);
     return `
-      <div class="toolbar"><div class="chips">${[["open", "Open"], ["completed", "Completed"], ["cancelled", "Cancelled"], ["all", "All"]].map(([v, t]) => `<button class="chip ${ofilter === v ? "on" : ""}" data-of="${v}">${t}</button>`).join("")}</div></div>
+      <div class="toolbar"><div class="chips">${[["open", "Open"], ["completed", "Completed"], ["cancelled", "Cancelled"], ["all", "All"]].map(([v, t]) => `<button class="chip ${ofilter === v ? "on" : ""}" data-of="${v}">${t}</button>`).join("")}</div>${exportBtn("orders")}</div>
       <div class="panel table">
         ${O.map((o) => `
           <div class="trow">
@@ -115,7 +136,7 @@
     if (search) U = U.filter((u) => (u.name + u.uni).toLowerCase().includes(search));
     const L = S.everyListing();
     return `
-      <div class="toolbar"><span class="muted">${U.length} users</span><input id="q" type="search" placeholder="Search name or university" value="${esc(search)}"></div>
+      <div class="toolbar"><span class="muted">${U.length} users</span><input id="q" type="search" placeholder="Search name or university" value="${esc(search)}">${exportBtn("users")}</div>
       <div class="panel table">
         ${U.map((u) => `
           <div class="trow">
@@ -190,6 +211,7 @@
   }
 
   function bind() {
+    $$("[data-csv]").forEach((b) => (b.onclick = () => download(b.dataset.csv)));
     $$("[data-tab]").forEach((b) => (b.onclick = () => { tab = b.dataset.tab; search = ""; render(); }));
     $$("[data-lf]").forEach((b) => (b.onclick = () => { lfilter = b.dataset.lf; render(); }));
     $$("[data-of]").forEach((b) => (b.onclick = () => { ofilter = b.dataset.of; render(); }));

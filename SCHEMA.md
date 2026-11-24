@@ -46,7 +46,8 @@ Email and phone are **not** stored here (email stays in Firebase Auth, phone goe
 | `was` | number? | Old price → shows a discount badge |
 | `unit` | string? | Services: `per hour`, `per job`, … |
 | `cond` | string? | Items: `New`, `Like new`, `Good`, `Fair` |
-| `img` | string? | Photo as a small JPEG data URL (resized to 640 px in the browser, < 400 KB) |
+| `img` | string? | Cover photo as a small JPEG data URL (resized to 640 px in the browser) |
+| `imgs` | array? | Up to 4 photos (same format); `img` is always `imgs[0]`. Whole document must stay under Firestore's 1 MB limit |
 | `sellerId` | string | Owner's uid |
 | `sellerName`, `sellerUni`, `sellerJoined` | string | Copied from the profile so lists load fast |
 | `status` | string | `pending` → `active` / `paused` / `sold`; `hidden` = removed by admin |

@@ -7,7 +7,18 @@
 <title>UniMart · Campus marketplace</title>
 <meta name="description" content="The campus marketplace for Sri Lankan university students. Buy and sell items and services with students near you.">
 <link rel="icon" type="image/svg+xml" href="img/logo.svg">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="UniMart">
+<meta property="og:title" content="UniMart · Campus marketplace">
+<meta property="og:description" content="Buy, sell and hire on campus: books, laptops, hostel gear, tutoring, printing, repairs and rides from students at your university.">
+<meta property="og:url" content="https://meshannawod.github.io/unimart/">
+<meta property="og:image" content="https://meshannawod.github.io/unimart/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="manifest.webmanifest">
+<script>try{var t=localStorage.getItem("unimart-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -38,7 +49,7 @@
 <footer class="footer">
   <div class="wrap">
     <p><b>UniMart</b> · the campus marketplace for Sri Lankan university students. Meet in safe public places on campus and never pay before you see the item.<span id="mode-note"></span></p>
-    <p><a href="#/browse">Browse</a> · <a href="#/sell">Sell</a> · <a href="admin.html">Admin</a> · <a href="#" id="reset-demo">Reset demo data</a></p>
+    <p><a href="#" id="install" hidden>📲 Install app</a> <a href="#/browse">Browse</a> · <a href="#/sell">Sell</a> · <a href="admin.html">Admin</a> · <a href="#" id="reset-demo">Reset demo data</a> · <label>Theme <select class="theme-pick" id="theme-pick" aria-label="Theme"><option value="">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select></label></p>
   </div>
 </footer>
 
